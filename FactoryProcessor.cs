@@ -172,6 +172,7 @@ namespace MegaFactory
         public static void Postfix(Smelter __instance)
         {
             FactoryProcessor.AllSmelters.Add(__instance);
+            MegaFactoryPlugin.Log?.LogDebug($"[Smelter_Awake] Registered: {__instance.gameObject.name} (total: {FactoryProcessor.AllSmelters.Count})");
             if (__instance.gameObject.GetComponent<SmelterDestroyTracker>() == null)
                 __instance.gameObject.AddComponent<SmelterDestroyTracker>();
         }
@@ -207,18 +208,28 @@ namespace MegaFactory
 
     // ==================== PRODUCTION TRACKING PATCH ====================
     // When a smelter finishes producing an item, record it against the work order
+    // NOTE: No [HarmonyPatch] attribute — TargetMethod() handles resolution.
+    //       Combining both causes "You cannot combine TargetMethod with individual annotations" and aborts ALL patches.
 
-    [HarmonyPatch(typeof(Smelter), "Spawn")]
     public static class Smelter_Spawn_Patch
     {
-        // Use TargetMethod to dynamically find whatever Spawn overload exists
         static System.Reflection.MethodBase TargetMethod()
         {
             // Try (string, int) first, fall back to (string)
             var method = AccessTools.Method(typeof(Smelter), "Spawn", new System.Type[] { typeof(string), typeof(int) });
-            if (method != null) return method;
+            if (method != null)
+            {
+                MegaFactoryPlugin.Log?.LogDebug($"[Smelter_Spawn_Patch] Resolved Spawn(string, int)");
+                return method;
+            }
             method = AccessTools.Method(typeof(Smelter), "Spawn", new System.Type[] { typeof(string) });
-            return method;
+            if (method != null)
+            {
+                MegaFactoryPlugin.Log?.LogDebug($"[Smelter_Spawn_Patch] Resolved Spawn(string)");
+                return method;
+            }
+            MegaFactoryPlugin.Log?.LogWarning("[Smelter_Spawn_Patch] Could not find any Spawn method on Smelter!");
+            return null;
         }
 
         [HarmonyPostfix]
@@ -226,7 +237,7 @@ namespace MegaFactory
         {
             var nview = __instance.GetComponent<ZNetView>();
             if (nview == null || !nview.IsValid()) return;
-            // 'ore' here is the input prefab name that was consumed
+            MegaFactoryPlugin.Log?.LogDebug($"[Smelter_Spawn_Patch] Produced: {ore}");
             WorkOrderManager.RecordProduction(nview, ore, 1);
         }
     }

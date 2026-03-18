@@ -226,6 +226,7 @@ namespace MegaFactory
         public static void Postfix(Container __instance)
         {
             ContainerHelper.Register(__instance);
+            MegaFactoryPlugin.Log?.LogDebug($"[Container_Awake] Registered: {__instance.gameObject.name} as {ContainerHelper.GetContainerType(__instance)} (total: {ContainerHelper.AllContainers.Count})");
             if (__instance.gameObject.GetComponent<ContainerDestroyTracker>() == null)
                 __instance.gameObject.AddComponent<ContainerDestroyTracker>();
         }

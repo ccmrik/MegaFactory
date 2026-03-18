@@ -314,18 +314,25 @@ namespace MegaFactory
         [HarmonyPrefix]
         public static bool Prefix(Smelter __instance, Humanoid user, bool hold, bool alt, ref bool __result)
         {
-            if (hold) return true; // Don't intercept hold-E
-            if (!Input.GetKey(MegaFactoryPlugin.WorkOrderKey.Value))
+            if (hold) return true;
+
+            bool keyHeld = Input.GetKey(MegaFactoryPlugin.WorkOrderKey.Value);
+            MegaFactoryPlugin.Log?.LogDebug($"[Smelter_Interact] station={__instance.gameObject.name} hold={hold} alt={alt} keyHeld={keyHeld}");
+
+            if (!keyHeld)
                 return true; // Normal interaction
 
             var stationType = GetStationType(__instance);
             if (stationType == null)
-                return true; // Not one of our stations
+            {
+                MegaFactoryPlugin.Log?.LogDebug($"[Smelter_Interact] Not a recognized station, passing through");
+                return true;
+            }
 
-            // Open work order GUI
+            MegaFactoryPlugin.Log?.LogInfo($"[Smelter_Interact] Opening Work Order GUI for {stationType.Value}");
             WorkOrderGUI.Instance.Show(__instance, stationType.Value);
             __result = true;
-            return false; // Skip normal interaction
+            return false;
         }
 
         private static StationType? GetStationType(Smelter smelter)

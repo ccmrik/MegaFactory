@@ -15,7 +15,7 @@ namespace MegaFactory
     {
         public const string PluginGUID = "com.rik.megafactory";
         public const string PluginName = "Mega Factory";
-        public const string PluginVersion = "1.0.1";
+        public const string PluginVersion = "1.0.2";
 
         internal static ManualLogSource Log;
         private static Harmony _harmony;
@@ -94,7 +94,16 @@ namespace MegaFactory
             SetupConfigWatcher();
 
             _harmony = new Harmony(PluginGUID);
-            _harmony.PatchAll(Assembly.GetExecutingAssembly());
+            try
+            {
+                _harmony.PatchAll(Assembly.GetExecutingAssembly());
+                Log.LogInfo($"Harmony patches applied successfully.");
+            }
+            catch (Exception ex)
+            {
+                Log.LogError($"Harmony PatchAll FAILED: {ex.Message}");
+                Log.LogError(ex.ToString());
+            }
 
             Log.LogInfo($"{PluginName} loaded successfully!");
         }
