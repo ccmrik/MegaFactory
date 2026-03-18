@@ -78,10 +78,6 @@ namespace MegaFactory
             float height = 120f + _availableInputs.Length * 80f;
             _windowRect = new Rect(Screen.width / 2f - width / 2f, Screen.height / 2f - height / 2f, width, height);
             _visible = true;
-
-            // Unlock cursor so the player can interact with the GUI
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
         }
 
         public void Hide()
@@ -89,26 +85,24 @@ namespace MegaFactory
             _visible = false;
             _targetStation = null;
             _targetNView = null;
-
-            // Restore cursor to game's default locked state
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
         }
 
         private void Update()
         {
-            if (_visible)
-            {
-                // Keep cursor unlocked every frame (game may try to re-lock it)
-                Cursor.lockState = CursorLockMode.None;
-                Cursor.visible = true;
-
-                if (Input.GetKeyDown(KeyCode.Escape))
-                    Hide();
-            }
+            if (_visible && Input.GetKeyDown(KeyCode.Escape))
+                Hide();
 
             if (_statusTimer > 0)
                 _statusTimer -= Time.deltaTime;
+        }
+
+        private void LateUpdate()
+        {
+            if (_visible)
+            {
+                Cursor.lockState = CursorLockMode.None;
+                Cursor.visible = true;
+            }
         }
 
         private static void InitStyles()
@@ -337,12 +331,24 @@ namespace MegaFactory
     [HarmonyPatch(typeof(GameCamera), "UpdateCamera")]
     public static class GameCamera_UpdateCamera_WorkOrder_Patch
     {
+        private static Quaternion _savedRotation;
+
         [HarmonyPrefix]
-        public static bool Prefix()
+        public static void Prefix(GameCamera __instance)
         {
             if (WorkOrderGUI.Instance != null && WorkOrderGUI.Instance.IsVisible)
-                return false; // Freeze camera while GUI is open
-            return true;
+                _savedRotation = __instance.transform.rotation;
+        }
+
+        [HarmonyPostfix]
+        public static void Postfix(GameCamera __instance)
+        {
+            if (WorkOrderGUI.Instance != null && WorkOrderGUI.Instance.IsVisible)
+            {
+                __instance.transform.rotation = _savedRotation;
+                Cursor.lockState = CursorLockMode.None;
+                Cursor.visible = true;
+            }
         }
     }
 
