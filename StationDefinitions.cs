@@ -8,7 +8,8 @@ namespace MegaFactory
         Smelter,
         BlastFurnace,
         Windmill,
-        SpinningWheel
+        SpinningWheel,
+        EitrRefinery
     }
 
     /// <summary>
@@ -67,6 +68,13 @@ namespace MegaFactory
         };
         public static readonly string SpinningWheelFuel = null;
 
+        // Eitr Refinery: Soft Tissue fuel + Sap input
+        public static readonly InputItem[] EitrRefineryInputs = new InputItem[]
+        {
+            new InputItem("Sap", "Sap"),
+        };
+        public static readonly string EitrRefineryFuel = "SoftTissue";
+
         public static InputItem[] GetInputs(StationType type)
         {
             switch (type)
@@ -76,6 +84,7 @@ namespace MegaFactory
                 case StationType.BlastFurnace: return BlastFurnaceOres;
                 case StationType.Windmill: return WindmillInputs;
                 case StationType.SpinningWheel: return SpinningWheelInputs;
+                case StationType.EitrRefinery: return EitrRefineryInputs;
                 default: return new InputItem[0];
             }
         }
@@ -86,6 +95,7 @@ namespace MegaFactory
             {
                 case StationType.Smelter: return SmelterFuel;
                 case StationType.BlastFurnace: return BlastFurnaceFuel;
+                case StationType.EitrRefinery: return EitrRefineryFuel;
                 default: return null;
             }
         }
@@ -99,6 +109,7 @@ namespace MegaFactory
                 case StationType.BlastFurnace: return "Blast Furnace";
                 case StationType.Windmill: return "Windmill";
                 case StationType.SpinningWheel: return "Spinning Wheel";
+                case StationType.EitrRefinery: return "Eitr Refinery";
                 default: return "Unknown";
             }
         }

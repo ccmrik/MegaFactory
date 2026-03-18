@@ -381,6 +381,8 @@ namespace MegaFactory
                 return StationType.Windmill;
             if (name.Contains("spinningwheel") || name.Contains("spinning_wheel"))
                 return StationType.SpinningWheel;
+            if (name.Contains("eitrrefinery") || name.Contains("eitr_refinery"))
+                return StationType.EitrRefinery;
             return null;
         }
     }

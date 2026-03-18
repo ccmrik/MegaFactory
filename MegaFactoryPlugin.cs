@@ -15,7 +15,7 @@ namespace MegaFactory
     {
         public const string PluginGUID = "com.rik.megafactory";
         public const string PluginName = "Mega Factory";
-        public const string PluginVersion = "1.0.5";
+        public const string PluginVersion = "1.1.0";
 
         internal static ManualLogSource Log;
         private static Harmony _harmony;
@@ -44,6 +44,9 @@ namespace MegaFactory
 
         // ── Spinning Wheel ──
         public static ConfigEntry<bool> EnableSpinningWheel;
+
+        // ── Eitr Refinery ──
+        public static ConfigEntry<bool> EnableEitrRefinery;
 
         // ── Work Order GUI ──
         public static ConfigEntry<KeyCode> WorkOrderKey;
@@ -86,8 +89,12 @@ namespace MegaFactory
             EnableSpinningWheel = Config.Bind("6. Spinning Wheel", "Enable", true,
                 "Auto-feed Spinning Wheels with flax from nearby containers");
 
-            // 7. Work Order GUI
-            WorkOrderKey = Config.Bind("7. Work Orders", "InteractKey", KeyCode.LeftShift,
+            // 7. Eitr Refinery
+            EnableEitrRefinery = Config.Bind("7. Eitr Refinery", "Enable", true,
+                "Auto-feed Eitr Refineries with sap and soft tissue from nearby containers");
+
+            // 8. Work Order GUI
+            WorkOrderKey = Config.Bind("8. Work Orders", "InteractKey", KeyCode.LeftShift,
                 "Hold this key + interact (E) with a station to open the Work Order panel");
 
             _config = Config;

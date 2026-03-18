@@ -59,6 +59,10 @@ namespace MegaFactory
             if (name.Contains("spinningwheel") || name.Contains("spinning_wheel"))
                 return StationType.SpinningWheel;
 
+            // Eitr Refinery
+            if (name.Contains("eitrrefinery") || name.Contains("eitr_refinery"))
+                return StationType.EitrRefinery;
+
             return null;
         }
 
@@ -71,6 +75,7 @@ namespace MegaFactory
                 case StationType.BlastFurnace: return MegaFactoryPlugin.EnableBlastFurnace.Value;
                 case StationType.Windmill: return MegaFactoryPlugin.EnableWindmill.Value;
                 case StationType.SpinningWheel: return MegaFactoryPlugin.EnableSpinningWheel.Value;
+                case StationType.EitrRefinery: return MegaFactoryPlugin.EnableEitrRefinery.Value;
                 default: return false;
             }
         }
