@@ -117,12 +117,22 @@ namespace MegaFactory
                 int taken = TakeFromContainers(containers, input.PrefabName, toFeed);
                 if (taken > 0)
                 {
-                    // Add ore items to the smelter queue
-                    for (int i = 0; i < taken; i++)
+                    // Write ore directly to ZDO queue slots (bypass RPC which expects player inventory)
+                    nview.ClaimOwnership();
+                    int added = 0;
+                    for (int s = 0; s < maxOre && added < taken; s++)
                     {
-                        nview.InvokeRPC("RPC_AddOre", input.PrefabName);
+                        string existing = nview.GetZDO().GetString($"item{s}", "");
+                        if (string.IsNullOrEmpty(existing))
+                        {
+                            nview.GetZDO().Set($"item{s}", input.PrefabName);
+                            added++;
+                        }
                     }
-                    slotsAvailable -= taken;
+                    // Update the queued count to match
+                    int newTotal = GetQueuedOreCount(nview, smelter);
+                    nview.GetZDO().Set(ZDOVars.s_queued, newTotal);
+                    slotsAvailable -= added;
                 }
             }
         }
@@ -201,11 +211,22 @@ namespace MegaFactory
     [HarmonyPatch(typeof(Smelter), "Spawn")]
     public static class Smelter_Spawn_Patch
     {
+        // Use TargetMethod to dynamically find whatever Spawn overload exists
+        static System.Reflection.MethodBase TargetMethod()
+        {
+            // Try (string, int) first, fall back to (string)
+            var method = AccessTools.Method(typeof(Smelter), "Spawn", new System.Type[] { typeof(string), typeof(int) });
+            if (method != null) return method;
+            method = AccessTools.Method(typeof(Smelter), "Spawn", new System.Type[] { typeof(string) });
+            return method;
+        }
+
         [HarmonyPostfix]
         public static void Postfix(Smelter __instance, string ore)
         {
             var nview = __instance.GetComponent<ZNetView>();
             if (nview == null || !nview.IsValid()) return;
+            // 'ore' here is the input prefab name that was consumed
             WorkOrderManager.RecordProduction(nview, ore, 1);
         }
     }

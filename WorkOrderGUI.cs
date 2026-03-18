@@ -308,12 +308,13 @@ namespace MegaFactory
     // ==================== INTERACTION PATCH ====================
     // Intercept Shift+E on factory stations to open the Work Order GUI
 
-    [HarmonyPatch(typeof(Smelter), "OnInteract")]
-    public static class Smelter_OnInteract_Patch
+    [HarmonyPatch(typeof(Smelter), "Interact")]
+    public static class Smelter_Interact_Patch
     {
         [HarmonyPrefix]
-        public static bool Prefix(Smelter __instance, ref bool __result)
+        public static bool Prefix(Smelter __instance, Humanoid user, bool hold, bool alt, ref bool __result)
         {
+            if (hold) return true; // Don't intercept hold-E
             if (!Input.GetKey(MegaFactoryPlugin.WorkOrderKey.Value))
                 return true; // Normal interaction
 
