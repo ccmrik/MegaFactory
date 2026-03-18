@@ -4,7 +4,7 @@
     <TargetFramework>net462</TargetFramework>
     <AssemblyName>MegaFactory</AssemblyName>
     <RootNamespace>MegaFactory</RootNamespace>
-    <Version>1.0.4</Version>
+    <Version>1.0.5</Version>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
