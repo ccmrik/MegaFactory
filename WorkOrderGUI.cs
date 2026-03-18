@@ -305,32 +305,24 @@ namespace MegaFactory
         }
     }
 
-    // ==================== INTERACTION PATCH ====================
+    // ==================== INTERACTION PATCHES ====================
     // Intercept Shift+E on factory stations to open the Work Order GUI
+    // Valheim uses Switch callbacks (OnAddOre, OnAddFuel, OnEmpty) instead of Interact
 
-    [HarmonyPatch(typeof(Smelter), "Interact")]
-    public static class Smelter_Interact_Patch
+    public static class WorkOrderInterceptHelper
     {
-        [HarmonyPrefix]
-        public static bool Prefix(Smelter __instance, Humanoid user, bool hold, bool alt, ref bool __result)
+        public static bool TryOpenWorkOrderGUI(Smelter instance, Humanoid user, ref bool __result)
         {
-            if (hold) return true;
-
             bool keyHeld = Input.GetKey(MegaFactoryPlugin.WorkOrderKey.Value);
-            MegaFactoryPlugin.Log?.LogDebug($"[Smelter_Interact] station={__instance.gameObject.name} hold={hold} alt={alt} keyHeld={keyHeld}");
-
             if (!keyHeld)
                 return true; // Normal interaction
 
-            var stationType = GetStationType(__instance);
+            var stationType = GetStationType(instance);
             if (stationType == null)
-            {
-                MegaFactoryPlugin.Log?.LogDebug($"[Smelter_Interact] Not a recognized station, passing through");
                 return true;
-            }
 
-            MegaFactoryPlugin.Log?.LogInfo($"[Smelter_Interact] Opening Work Order GUI for {stationType.Value}");
-            WorkOrderGUI.Instance.Show(__instance, stationType.Value);
+            MegaFactoryPlugin.Log?.LogInfo($"[WorkOrder] Opening Work Order GUI for {stationType.Value}");
+            WorkOrderGUI.Instance.Show(instance, stationType.Value);
             __result = true;
             return false;
         }
@@ -352,9 +344,29 @@ namespace MegaFactory
         }
     }
 
-    // Show work order status on hover
-    [HarmonyPatch(typeof(Smelter), "GetHoverText")]
-    public static class Smelter_GetHoverText_Patch
+    [HarmonyPatch(typeof(Smelter), "OnAddOre")]
+    public static class Smelter_OnAddOre_Patch
+    {
+        [HarmonyPrefix]
+        public static bool Prefix(Smelter __instance, Humanoid user, ref bool __result)
+        {
+            return WorkOrderInterceptHelper.TryOpenWorkOrderGUI(__instance, user, ref __result);
+        }
+    }
+
+    [HarmonyPatch(typeof(Smelter), "OnAddFuel")]
+    public static class Smelter_OnAddFuel_Patch
+    {
+        [HarmonyPrefix]
+        public static bool Prefix(Smelter __instance, Humanoid user, ref bool __result)
+        {
+            return WorkOrderInterceptHelper.TryOpenWorkOrderGUI(__instance, user, ref __result);
+        }
+    }
+
+    // Show work order status on hover (ore switch)
+    [HarmonyPatch(typeof(Smelter), "OnHoverAddOre")]
+    public static class Smelter_OnHoverAddOre_Patch
     {
         [HarmonyPostfix]
         public static void Postfix(Smelter __instance, ref string __result)

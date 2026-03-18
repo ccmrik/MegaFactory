@@ -208,11 +208,11 @@ namespace MegaFactory
 
     // ==================== PRODUCTION TRACKING PATCH ====================
     // When a smelter finishes producing an item, record it against the work order
-    // NOTE: No [HarmonyPatch] attribute — TargetMethod() handles resolution.
-    //       Combining both causes "You cannot combine TargetMethod with individual annotations" and aborts ALL patches.
 
+    [HarmonyPatch]
     public static class Smelter_Spawn_Patch
     {
+        [HarmonyTargetMethod]
         static System.Reflection.MethodBase TargetMethod()
         {
             // Try (string, int) first, fall back to (string)
