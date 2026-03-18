@@ -69,8 +69,9 @@ namespace MegaFactory
 
         /// <summary>
         /// Returns how many of this input item the station should still produce.
-        /// -1 means no work order (unlimited / use station toggle to control).
+        /// -1 means no work order — station won't auto-feed ore (requires a work order).
         /// 0 means the order is complete — stop processing.
+        /// Positive value = remaining to produce.
         /// </summary>
         public static int GetRemaining(ZNetView nview, string prefabName)
         {

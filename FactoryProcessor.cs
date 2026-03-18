@@ -106,13 +106,11 @@ namespace MegaFactory
             {
                 if (slotsAvailable <= 0) break;
 
-                // Check work order
+                // Check work order — stations only process with an active order
                 int remaining = WorkOrderManager.GetRemaining(nview, input.PrefabName);
-                if (remaining == 0) continue; // Order complete or not ordered
+                if (remaining <= 0) continue; // No work order or order complete — skip
 
-                int toFeed = slotsAvailable;
-                if (remaining > 0)
-                    toFeed = Mathf.Min(toFeed, remaining);
+                int toFeed = Mathf.Min(slotsAvailable, remaining);
 
                 int taken = TakeFromContainers(containers, input.PrefabName, toFeed);
                 if (taken > 0)
