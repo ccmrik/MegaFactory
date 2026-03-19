@@ -9,10 +9,12 @@ namespace MegaFactory
     /// IMGUI-based Work Order panel. Hold Shift+E on a factory station to open.
     /// Select items to produce and set quantities. Orders persist via ZDO.
     /// </summary>
+    [DefaultExecutionOrder(10000)]
     public class WorkOrderGUI : MonoBehaviour
     {
         private static WorkOrderGUI _instance;
         private bool _visible;
+        private Quaternion _savedCameraRotation;
         private Smelter _targetStation;
         private ZNetView _targetNView;
         private StationType _stationType;
@@ -78,6 +80,9 @@ namespace MegaFactory
             float height = 120f + _availableInputs.Length * 80f;
             _windowRect = new Rect(Screen.width / 2f - width / 2f, Screen.height / 2f - height / 2f, width, height);
             _visible = true;
+
+            if (GameCamera.instance != null)
+                _savedCameraRotation = GameCamera.instance.transform.rotation;
         }
 
         public void Hide()
@@ -102,6 +107,10 @@ namespace MegaFactory
             {
                 Cursor.lockState = CursorLockMode.None;
                 Cursor.visible = true;
+
+                // Freeze camera orientation — execution order 10000 ensures we run after GameCamera
+                if (GameCamera.instance != null)
+                    GameCamera.instance.transform.rotation = _savedCameraRotation;
             }
         }
 
@@ -325,30 +334,6 @@ namespace MegaFactory
         {
             if (WorkOrderGUI.Instance != null && WorkOrderGUI.Instance.IsVisible)
                 __result = false;
-        }
-    }
-
-    [HarmonyPatch(typeof(GameCamera), "UpdateCamera")]
-    public static class GameCamera_UpdateCamera_WorkOrder_Patch
-    {
-        private static Quaternion _savedRotation;
-
-        [HarmonyPrefix]
-        public static void Prefix(GameCamera __instance)
-        {
-            if (WorkOrderGUI.Instance != null && WorkOrderGUI.Instance.IsVisible)
-                _savedRotation = __instance.transform.rotation;
-        }
-
-        [HarmonyPostfix]
-        public static void Postfix(GameCamera __instance)
-        {
-            if (WorkOrderGUI.Instance != null && WorkOrderGUI.Instance.IsVisible)
-            {
-                __instance.transform.rotation = _savedRotation;
-                Cursor.lockState = CursorLockMode.None;
-                Cursor.visible = true;
-            }
         }
     }
 
