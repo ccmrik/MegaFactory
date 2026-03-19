@@ -15,7 +15,7 @@ namespace MegaFactory
     {
         public const string PluginGUID = "com.rik.megafactory";
         public const string PluginName = "Mega Factory";
-        public const string PluginVersion = "1.1.4";
+        public const string PluginVersion = "1.1.5";
 
         internal static ManualLogSource Log;
         private static Harmony _harmony;
@@ -50,6 +50,9 @@ namespace MegaFactory
 
         // ── Work Order GUI ──
         public static ConfigEntry<KeyCode> WorkOrderKey;
+
+        // ── Debug ──
+        public static ConfigEntry<bool> DebugMode;
 
         // Timers
         private static float _processTimer;
@@ -96,6 +99,10 @@ namespace MegaFactory
             // 8. Work Order GUI
             WorkOrderKey = Config.Bind("8. Work Orders", "InteractKey", KeyCode.LeftShift,
                 "Hold this key + interact (E) with a station to open the Work Order panel");
+
+            // 9. Debug
+            DebugMode = Config.Bind("9. Debug", "DebugMode", false,
+                "Enable verbose debug logging to BepInEx console/log");
 
             _config = Config;
             SetupConfigWatcher();

@@ -15,6 +15,7 @@ namespace MegaFactory
         private static WorkOrderGUI _instance;
         private bool _visible;
         private int _debugLogCounter;
+        internal static int _escConsumedFrame = -1;
         private Smelter _targetStation;
         private ZNetView _targetNView;
         private StationType _stationType;
@@ -80,7 +81,8 @@ namespace MegaFactory
             float height = 120f + _availableInputs.Length * 80f;
             _windowRect = new Rect(Screen.width / 2f - width / 2f, Screen.height / 2f - height / 2f, width, height);
             _visible = true;
-            MegaFactoryPlugin.Log?.LogInfo($"[WorkOrder] GUI opened for {stationType}");
+            if (MegaFactoryPlugin.DebugMode.Value)
+                MegaFactoryPlugin.Log?.LogInfo($"[WorkOrder] GUI opened for {stationType}");
         }
 
         public void Hide()
@@ -88,13 +90,17 @@ namespace MegaFactory
             _visible = false;
             _targetStation = null;
             _targetNView = null;
-            MegaFactoryPlugin.Log?.LogInfo("[WorkOrder] GUI closed.");
+            if (MegaFactoryPlugin.DebugMode.Value)
+                MegaFactoryPlugin.Log?.LogInfo("[WorkOrder] GUI closed.");
         }
 
         private void Update()
         {
             if (_visible && Input.GetKeyDown(KeyCode.Escape))
+            {
+                _escConsumedFrame = Time.frameCount;
                 Hide();
+            }
 
             if (_statusTimer > 0)
                 _statusTimer -= Time.deltaTime;
@@ -109,7 +115,7 @@ namespace MegaFactory
 
                 // Debug logging (throttled — every 120 frames)
                 _debugLogCounter++;
-                if (_debugLogCounter % 120 == 1)
+                if (MegaFactoryPlugin.DebugMode.Value && _debugLogCounter % 120 == 1)
                     MegaFactoryPlugin.Log?.LogInfo($"[WorkOrder] LateUpdate: visible={_visible}, cursorLock={Cursor.lockState}, cursorVis={Cursor.visible}");
             }
         }
@@ -350,6 +356,19 @@ namespace MegaFactory
         }
     }
 
+    // Block ESC from opening main menu on the same frame we close our GUI
+    [HarmonyPatch(typeof(Menu), "Update")]
+    public static class Menu_Update_WorkOrder_Patch
+    {
+        [HarmonyPrefix]
+        public static bool Prefix()
+        {
+            if (WorkOrderGUI._escConsumedFrame == Time.frameCount)
+                return false; // Skip Menu.Update this frame
+            return true;
+        }
+    }
+
     // ==================== INTERACTION PATCHES ====================
     // Intercept Shift+E on factory stations to open the Work Order GUI
     // Valheim uses Switch callbacks (OnAddOre, OnAddFuel, OnEmpty) instead of Interact
@@ -366,7 +385,8 @@ namespace MegaFactory
             if (stationType == null)
                 return true;
 
-            MegaFactoryPlugin.Log?.LogInfo($"[WorkOrder] Opening Work Order GUI for {stationType.Value}");
+            if (MegaFactoryPlugin.DebugMode.Value)
+                MegaFactoryPlugin.Log?.LogInfo($"[WorkOrder] Opening Work Order GUI for {stationType.Value}");
             WorkOrderGUI.Instance.Show(instance, stationType.Value);
             __result = true;
             return false;
