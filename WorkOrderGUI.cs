@@ -1,6 +1,7 @@
 using HarmonyLib;
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using UnityEngine;
 
 namespace MegaFactory
@@ -15,6 +16,8 @@ namespace MegaFactory
         private static WorkOrderGUI _instance;
         private bool _visible;
         private Quaternion _savedCameraRotation;
+        private static FieldInfo _mouseCaptureField;
+        private int _debugLogCounter;
         private Smelter _targetStation;
         private ZNetView _targetNView;
         private StationType _stationType;
@@ -81,8 +84,15 @@ namespace MegaFactory
             _windowRect = new Rect(Screen.width / 2f - width / 2f, Screen.height / 2f - height / 2f, width, height);
             _visible = true;
 
+            // Cache reflection field for GameCamera.m_mouseCapture
+            if (_mouseCaptureField == null)
+                _mouseCaptureField = typeof(GameCamera).GetField("m_mouseCapture", BindingFlags.NonPublic | BindingFlags.Instance);
+
             if (GameCamera.instance != null)
+            {
                 _savedCameraRotation = GameCamera.instance.transform.rotation;
+                MegaFactoryPlugin.Log?.LogInfo($"[WorkOrder] GUI opened. Camera rotation saved. m_mouseCapture field found: {_mouseCaptureField != null}");
+            }
         }
 
         public void Hide()
@@ -90,6 +100,7 @@ namespace MegaFactory
             _visible = false;
             _targetStation = null;
             _targetNView = null;
+            MegaFactoryPlugin.Log?.LogInfo("[WorkOrder] GUI closed.");
         }
 
         private void Update()
@@ -105,12 +116,27 @@ namespace MegaFactory
         {
             if (_visible)
             {
+                // Force cursor unlocked
                 Cursor.lockState = CursorLockMode.None;
                 Cursor.visible = true;
 
-                // Freeze camera orientation — execution order 10000 ensures we run after GameCamera
+                // Force m_mouseCapture = false via reflection (prevents camera mouse-look)
+                if (GameCamera.instance != null && _mouseCaptureField != null)
+                    _mouseCaptureField.SetValue(GameCamera.instance, false);
+
+                // Also restore saved rotation as safety net
                 if (GameCamera.instance != null)
                     GameCamera.instance.transform.rotation = _savedCameraRotation;
+
+                // Debug logging (throttled — every 60 frames)
+                _debugLogCounter++;
+                if (_debugLogCounter % 60 == 1)
+                {
+                    bool mc = false;
+                    if (GameCamera.instance != null && _mouseCaptureField != null)
+                        mc = (bool)_mouseCaptureField.GetValue(GameCamera.instance);
+                    MegaFactoryPlugin.Log?.LogInfo($"[WorkOrder] LateUpdate: visible={_visible}, cursorLock={Cursor.lockState}, cursorVis={Cursor.visible}, mouseCapture={mc}, camRot={GameCamera.instance?.transform.rotation.eulerAngles}");
+                }
             }
         }
 
@@ -324,7 +350,7 @@ namespace MegaFactory
     }
 
     // ==================== INPUT BLOCKING PATCHES ====================
-    // Block player movement/interaction and camera rotation while Work Order GUI is open
+    // Block player movement/interaction and camera mouse-look while Work Order GUI is open
 
     [HarmonyPatch(typeof(Player), "TakeInput")]
     public static class Player_TakeInput_WorkOrder_Patch
@@ -334,6 +360,30 @@ namespace MegaFactory
         {
             if (WorkOrderGUI.Instance != null && WorkOrderGUI.Instance.IsVisible)
                 __result = false;
+        }
+    }
+
+    [HarmonyPatch(typeof(GameCamera), "UpdateMouseCapture")]
+    public static class GameCamera_UpdateMouseCapture_WorkOrder_Patch
+    {
+        private static FieldInfo _mouseCaptureField;
+
+        [HarmonyPostfix]
+        public static void Postfix(GameCamera __instance)
+        {
+            if (WorkOrderGUI.Instance == null || !WorkOrderGUI.Instance.IsVisible)
+                return;
+
+            // Force mouse capture off so GameCamera doesn't read mouse axes for rotation
+            if (_mouseCaptureField == null)
+                _mouseCaptureField = typeof(GameCamera).GetField("m_mouseCapture", BindingFlags.NonPublic | BindingFlags.Instance);
+
+            if (_mouseCaptureField != null)
+            {
+                _mouseCaptureField.SetValue(__instance, false);
+                Cursor.lockState = CursorLockMode.None;
+                Cursor.visible = true;
+            }
         }
     }
 
