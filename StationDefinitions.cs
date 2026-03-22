@@ -73,7 +73,7 @@ namespace MegaFactory
         {
             new InputItem("Sap", "Sap"),
         };
-        public static readonly string EitrRefineryFuel = "SoftTissue";
+        public static readonly string EitrRefineryFuel = "Softtissue";
 
         public static InputItem[] GetInputs(StationType type)
         {

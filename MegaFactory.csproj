@@ -4,13 +4,13 @@
     <TargetFramework>net462</TargetFramework>
     <AssemblyName>MegaFactory</AssemblyName>
     <RootNamespace>MegaFactory</RootNamespace>
-    <Version>1.1.6</Version>
+    <Version>1.1.7</Version>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
   <PropertyGroup>
     <ValheimPath>C:\Program Files (x86)\Steam\steamapps\common\Valheim</ValheimPath>
-    <BepInExPath>C:\Users\Rik\AppData\Roaming\r2modmanPlus-local\Valheim\profiles\Valheim Min Mods\BepInEx</BepInExPath>
+    <BepInExPath>$(APPDATA)\MegaLoad\profiles\a01aed19fecf3a0d\BepInEx</BepInExPath>
   </PropertyGroup>
 
   <ItemGroup>
@@ -68,11 +68,5 @@
       <Private>false</Private>
     </Reference>
   </ItemGroup>
-
-  <!-- Auto-copy to BepInEx plugins folder after build -->
-  <Target Name="CopyToPlugins" AfterTargets="Build" Condition="Exists('$(BepInExPath)\plugins')">
-    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(BepInExPath)\plugins\MegaFactory" />
-    <Message Text="Copied $(TargetFileName) to BepInEx plugins folder" Importance="High" />
-  </Target>
 
 </Project>
