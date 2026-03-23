@@ -86,7 +86,9 @@ namespace MegaFactory
             int maxOre = smelter.m_maxOre;
             int maxFuel = smelter.m_maxFuel;
 
-            int currentOre = GetQueuedOreCount(nview, smelter);
+            // Use s_queued (authoritative) — NOT slot scanning which overcounts
+            // due to stale values left by Smelter.RemoveOneOre's shift logic
+            int currentOre = nview.GetZDO().GetInt(ZDOVars.s_queued, 0);
             float currentFuel = nview.GetZDO().GetFloat(ZDOVars.s_fuel, 0f);
 
             // ── Feed fuel first (Coal for Smelter/BlastFurnace) ──
@@ -128,21 +130,17 @@ namespace MegaFactory
                 int taken = TakeFromContainers(containers, input.PrefabName, toFeed);
                 if (taken > 0)
                 {
-                    // Write ore directly to ZDO queue slots (bypass RPC which expects player inventory)
+                    // Append items after the current queue tail (not random empty slots)
                     nview.ClaimOwnership();
+                    int queueSize = nview.GetZDO().GetInt(ZDOVars.s_queued, 0);
                     int added = 0;
-                    for (int s = 0; s < maxOre && added < taken; s++)
+                    for (int s = queueSize; s < maxOre && added < taken; s++)
                     {
-                        string existing = nview.GetZDO().GetString($"item{s}", "");
-                        if (string.IsNullOrEmpty(existing))
-                        {
-                            nview.GetZDO().Set($"item{s}", input.PrefabName);
-                            added++;
-                        }
+                        nview.GetZDO().Set($"item{s}", input.PrefabName);
+                        added++;
                     }
-                    // Update the queued count to match
-                    int newTotal = GetQueuedOreCount(nview, smelter);
-                    nview.GetZDO().Set(ZDOVars.s_queued, newTotal);
+                    // Update the authoritative queued count
+                    nview.GetZDO().Set(ZDOVars.s_queued, queueSize + added);
                     slotsAvailable -= added;
                 }
             }
@@ -150,20 +148,18 @@ namespace MegaFactory
 
         private static int GetQueuedOreCount(ZNetView nview, Smelter smelter)
         {
-            int count = 0;
-            for (int i = 0; i < smelter.m_maxOre; i++)
-            {
-                string ore = nview.GetZDO().GetString($"item{i}", "");
-                if (!string.IsNullOrEmpty(ore))
-                    count++;
-            }
-            return count;
+            // Use s_queued — the authoritative count managed by the Smelter.
+            // Do NOT scan slots; Smelter.RemoveOneOre shifts items down but
+            // doesn't clear the tail, leaving stale values that cause overcounting.
+            return nview.GetZDO().GetInt(ZDOVars.s_queued, 0);
         }
 
         private static int CountQueuedOfType(ZNetView nview, Smelter smelter, string prefabName)
         {
+            // Only scan within the actual queue range (s_queued), not all slots
+            int queueSize = nview.GetZDO().GetInt(ZDOVars.s_queued, 0);
             int count = 0;
-            for (int i = 0; i < smelter.m_maxOre; i++)
+            for (int i = 0; i < queueSize && i < smelter.m_maxOre; i++)
             {
                 string ore = nview.GetZDO().GetString($"item{i}", "");
                 if (ore.Equals(prefabName, System.StringComparison.OrdinalIgnoreCase))

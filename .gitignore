@@ -5,3 +5,6 @@ obj/
 .vs/
 *.dll
 *.pdb
+
+# Maintenance reports
+maintenance-report.json
