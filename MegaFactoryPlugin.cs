@@ -15,7 +15,7 @@ namespace MegaFactory
     {
         public const string PluginGUID = "com.rik.megafactory";
         public const string PluginName = "Mega Factory";
-        public const string PluginVersion = "1.1.10";
+        public const string PluginVersion = "1.1.11";
 
         internal static ManualLogSource Log;
         private static Harmony _harmony;
@@ -61,6 +61,8 @@ namespace MegaFactory
         {
             Log = Logger;
             Log.LogInfo($"{PluginName} v{PluginVersion} loading...");
+
+            MigrateConfig(Config.ConfigFilePath);
 
             // 1. General
             SearchRadius = Config.Bind("1. General", "SearchRadius", 15f,
@@ -174,6 +176,45 @@ namespace MegaFactory
                 _configWatcher = null;
             }
             _harmony?.UnpatchSelf();
+        }
+
+        private static void MigrateConfig(string configPath)
+        {
+            try
+            {
+                if (!File.Exists(configPath)) return;
+                string text = File.ReadAllText(configPath);
+                bool changed = false;
+
+                // Migrate old v1.0.x section (Work Orders was 7, now 8)
+                changed |= MigrateCfgSection(ref text, "7. Work Orders", "8. Work Orders");
+
+                if (changed)
+                    File.WriteAllText(configPath, text.TrimEnd() + "\n");
+            }
+            catch { }
+        }
+
+        private static bool MigrateCfgSection(ref string text, string oldName, string newName)
+        {
+            string oldHeader = "[" + oldName + "]";
+            int idx = text.IndexOf(oldHeader, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) return false;
+
+            int sectionEnd = text.IndexOf("\n[", idx + oldHeader.Length, StringComparison.Ordinal);
+
+            if (newName == null || text.IndexOf("[" + newName + "]", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                if (sectionEnd < 0)
+                    text = text.Substring(0, idx).TrimEnd('\r', '\n');
+                else
+                    text = text.Substring(0, idx) + text.Substring(sectionEnd + 1);
+            }
+            else
+            {
+                text = text.Remove(idx, oldHeader.Length).Insert(idx, "[" + newName + "]");
+            }
+            return true;
         }
     }
 }
