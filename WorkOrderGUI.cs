@@ -448,9 +448,9 @@ namespace MegaFactory
                 foreach (var order in orders)
                 {
                     if (order.IsComplete)
-                        __result += $"\n  <color=green>✓ {order.DisplayName}: {order.Produced}/{order.Requested}</color>";
+                        __result += $"\n  <color=green>* {order.DisplayName}: {order.Produced}/{order.Requested}</color>";
                     else
-                        __result += $"\n  <color=orange>► {order.DisplayName}: {order.Produced}/{order.Requested}</color>";
+                        __result += $"\n  <color=orange>> {order.DisplayName}: {order.Produced}/{order.Requested}</color>";
                 }
             }
 
