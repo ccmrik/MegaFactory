@@ -115,6 +115,14 @@ namespace MegaFactory
                 int remaining = WorkOrderManager.GetRemaining(nview, input.PrefabName);
                 if (remaining <= 0) continue; // No work order or order complete — skip
 
+                // Account for items already in the station queue + spawn buffer
+                // so we don't overfeed (critical for m_spawnStack stations like Eitr Refinery,
+                // where output only ejects when the queue empties)
+                int queuedOfType = CountQueuedOfType(nview, smelter, input.PrefabName);
+                int spawnBuffered = GetSpawnBuffered(nview, input.PrefabName);
+                remaining = remaining - queuedOfType - spawnBuffered;
+                if (remaining <= 0) continue;
+
                 int toFeed = Mathf.Min(slotsAvailable, remaining);
 
                 int taken = TakeFromContainers(containers, input.PrefabName, toFeed);
@@ -150,6 +158,26 @@ namespace MegaFactory
                     count++;
             }
             return count;
+        }
+
+        private static int CountQueuedOfType(ZNetView nview, Smelter smelter, string prefabName)
+        {
+            int count = 0;
+            for (int i = 0; i < smelter.m_maxOre; i++)
+            {
+                string ore = nview.GetZDO().GetString($"item{i}", "");
+                if (ore.Equals(prefabName, System.StringComparison.OrdinalIgnoreCase))
+                    count++;
+            }
+            return count;
+        }
+
+        private static int GetSpawnBuffered(ZNetView nview, string prefabName)
+        {
+            string spawnOre = nview.GetZDO().GetString(ZDOVars.s_spawnOre, "");
+            if (string.IsNullOrEmpty(spawnOre)) return 0;
+            if (!spawnOre.Equals(prefabName, System.StringComparison.OrdinalIgnoreCase)) return 0;
+            return nview.GetZDO().GetInt(ZDOVars.s_spawnAmount, 0);
         }
 
         private static int TakeFromContainers(List<Container> containers, string prefabName, int amount)
