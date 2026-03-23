@@ -15,7 +15,7 @@ namespace MegaFactory
     {
         public const string PluginGUID = "com.rik.megafactory";
         public const string PluginName = "Mega Factory";
-        public const string PluginVersion = "1.1.11";
+        public const string PluginVersion = "1.1.12";
 
         internal static ManualLogSource Log;
         private static Harmony _harmony;
@@ -63,6 +63,7 @@ namespace MegaFactory
             Log.LogInfo($"{PluginName} v{PluginVersion} loading...");
 
             MigrateConfig(Config.ConfigFilePath);
+            Config.Reload();
 
             // 1. General
             SearchRadius = Config.Bind("1. General", "SearchRadius", 15f,
