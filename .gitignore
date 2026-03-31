@@ -6,5 +6,7 @@ obj/
 *.dll
 *.pdb
 
+*.code-workspace
+
 # Maintenance reports
 maintenance-report.json
