@@ -196,6 +196,59 @@ namespace MegaFactory
             return count;
         }
 
+        /// <summary>
+        /// Deposit items into the nearest containers with space.
+        /// Returns the number of items actually deposited.
+        /// </summary>
+        public static int DepositToContainers(List<Container> containers, string prefabName, int amount)
+        {
+            int totalDeposited = 0;
+            foreach (var container in containers)
+            {
+                if (totalDeposited >= amount) break;
+                int deposited = DepositToContainer(container, prefabName, amount - totalDeposited);
+                totalDeposited += deposited;
+            }
+            return totalDeposited;
+        }
+
+        /// <summary>
+        /// Deposit items into a single container by creating proper ItemData entries.
+        /// Returns the number of items actually deposited.
+        /// </summary>
+        public static int DepositToContainer(Container container, string prefabName, int amount)
+        {
+            var inventory = container.GetInventory();
+            if (inventory == null) return 0;
+            EnsureLoaded(container, inventory);
+
+            // Look up the item prefab from the game databases
+            GameObject prefab = ObjectDB.instance?.GetItemPrefab(prefabName);
+            if (prefab == null) prefab = ZNetScene.instance?.GetPrefab(prefabName);
+            if (prefab == null) return 0;
+
+            ItemDrop itemDrop = prefab.GetComponent<ItemDrop>();
+            if (itemDrop == null) return 0;
+
+            int deposited = 0;
+            while (deposited < amount)
+            {
+                ItemDrop.ItemData clone = itemDrop.m_itemData.Clone();
+                clone.m_stack = 1;
+                clone.m_dropPrefab = prefab;
+
+                if (!inventory.AddItem(clone))
+                    break; // Container full
+
+                deposited++;
+            }
+
+            if (deposited > 0)
+                SaveContainerToZDO(container);
+
+            return deposited;
+        }
+
         public static void SaveContainerToZDO(Container container)
         {
             try

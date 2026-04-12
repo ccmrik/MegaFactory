@@ -103,6 +103,11 @@ namespace MegaFactory
                 }
             }
 
+            // ── Auto-deposit output from spawn stack into containers ──
+            // The Eitr Refinery (and any m_spawnStack station) accumulates output
+            // internally instead of dropping it on the ground. Drain it into containers.
+            DrainSpawnStack(smelter, nview, containers);
+
             // ── Feed ore/inputs ──
             if (currentOre >= maxOre) return;
 
@@ -151,6 +156,30 @@ namespace MegaFactory
                         MegaFactoryPlugin.Log?.LogInfo($"[ProcessSmelter] {stationType} | Fed {added} {input.PrefabName} (queue: {queueSize}→{queueSize + added}/{maxOre})");
                 }
             }
+        }
+
+        /// <summary>
+        /// For m_spawnStack stations (e.g. Eitr Refinery), output accumulates in ZDO
+        /// fields s_spawnOre/s_spawnAmount instead of dropping on the ground.
+        /// This method drains that stack into nearby containers.
+        /// </summary>
+        private static void DrainSpawnStack(Smelter smelter, ZNetView nview, List<Container> containers)
+        {
+            string spawnOre = nview.GetZDO().GetString(ZDOVars.s_spawnOre, "");
+            int spawnAmount = nview.GetZDO().GetInt(ZDOVars.s_spawnAmount, 0);
+            if (string.IsNullOrEmpty(spawnOre) || spawnAmount <= 0) return;
+
+            int deposited = ContainerHelper.DepositToContainers(containers, spawnOre, spawnAmount);
+            if (deposited <= 0) return;
+
+            nview.ClaimOwnership();
+            int remaining = spawnAmount - deposited;
+            nview.GetZDO().Set(ZDOVars.s_spawnAmount, remaining);
+            if (remaining <= 0)
+                nview.GetZDO().Set(ZDOVars.s_spawnOre, "");
+
+            if (MegaFactoryPlugin.DebugMode.Value)
+                MegaFactoryPlugin.Log?.LogInfo($"[DrainSpawnStack] Deposited {deposited} {spawnOre} into containers ({remaining} remaining in stack)");
         }
 
         private static int GetQueuedOreCount(ZNetView nview, Smelter smelter)
