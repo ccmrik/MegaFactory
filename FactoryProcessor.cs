@@ -162,6 +162,11 @@ namespace MegaFactory
         /// For m_spawnStack stations (e.g. Eitr Refinery), output accumulates in ZDO
         /// fields s_spawnOre/s_spawnAmount instead of dropping on the ground.
         /// This method drains that stack into nearby containers.
+        ///
+        /// IMPORTANT: Valheim's Smelter stores the INPUT prefab name in s_spawnOre
+        /// (see Smelter.QueueProcessed), not the output. Spawn(ore, num) later looks
+        /// up m_conversion.m_to to instantiate the actual output item. We must do
+        /// the same conversion here or we'd try to deposit Sap instead of Eitr.
         /// </summary>
         private static void DrainSpawnStack(Smelter smelter, ZNetView nview, List<Container> containers)
         {
@@ -169,7 +174,16 @@ namespace MegaFactory
             int spawnAmount = nview.GetZDO().GetInt(ZDOVars.s_spawnAmount, 0);
             if (string.IsNullOrEmpty(spawnOre) || spawnAmount <= 0) return;
 
-            int deposited = ContainerHelper.DepositToContainers(containers, spawnOre, spawnAmount);
+            // Convert INPUT prefab (what's stored in the ZDO) → OUTPUT prefab (what we deposit).
+            string outputPrefab = GetOutputForInput(smelter, spawnOre);
+            if (string.IsNullOrEmpty(outputPrefab))
+            {
+                if (MegaFactoryPlugin.DebugMode.Value)
+                    MegaFactoryPlugin.Log?.LogWarning($"[DrainSpawnStack] No conversion found for input '{spawnOre}' on {smelter.gameObject.name} — skipping drain");
+                return;
+            }
+
+            int deposited = ContainerHelper.DepositToContainers(containers, outputPrefab, spawnAmount);
             if (deposited <= 0) return;
 
             nview.ClaimOwnership();
@@ -178,8 +192,11 @@ namespace MegaFactory
             if (remaining <= 0)
                 nview.GetZDO().Set(ZDOVars.s_spawnOre, "");
 
+            // Credit the work order (keyed by INPUT prefab, same as feeding).
+            WorkOrderManager.RecordProduction(nview, spawnOre, deposited);
+
             if (MegaFactoryPlugin.DebugMode.Value)
-                MegaFactoryPlugin.Log?.LogInfo($"[DrainSpawnStack] Deposited {deposited} {spawnOre} into containers ({remaining} remaining in stack)");
+                MegaFactoryPlugin.Log?.LogInfo($"[DrainSpawnStack] Deposited {deposited} {outputPrefab} (from '{spawnOre}' buffer) into containers ({remaining} remaining in stack)");
         }
 
         private static int GetQueuedOreCount(ZNetView nview, Smelter smelter)
@@ -209,12 +226,9 @@ namespace MegaFactory
             string spawnOre = nview.GetZDO().GetString(ZDOVars.s_spawnOre, "");
             if (string.IsNullOrEmpty(spawnOre)) return 0;
 
-            // s_spawnOre contains the OUTPUT prefab name (e.g. "Eitr"),
-            // but we're checking by INPUT prefab (e.g. "Sap").
-            // Look up the expected output for this input via the station's conversion table.
-            string expectedOutput = GetOutputForInput(smelter, inputPrefab);
-            if (expectedOutput == null) return 0;
-            if (!spawnOre.Equals(expectedOutput, System.StringComparison.OrdinalIgnoreCase)) return 0;
+            // s_spawnOre stores the INPUT prefab name (e.g. "Sap"), not the output —
+            // see Smelter.QueueProcessed. Compare directly against the input we're feeding.
+            if (!spawnOre.Equals(inputPrefab, System.StringComparison.OrdinalIgnoreCase)) return 0;
             return nview.GetZDO().GetInt(ZDOVars.s_spawnAmount, 0);
         }
 
@@ -229,21 +243,6 @@ namespace MegaFactory
             {
                 if (conv.m_from != null && conv.m_from.gameObject.name.Equals(inputPrefab, System.StringComparison.OrdinalIgnoreCase))
                     return conv.m_to?.gameObject.name;
-            }
-            return null;
-        }
-
-        /// <summary>
-        /// Maps an output prefab back to its input prefab using the Smelter's conversion table.
-        /// e.g. "Eitr" → "Sap", "Copper" → "CopperOre", "Coal" → "Wood"
-        /// </summary>
-        internal static string GetInputForOutput(Smelter smelter, string outputPrefab)
-        {
-            if (smelter?.m_conversion == null) return null;
-            foreach (var conv in smelter.m_conversion)
-            {
-                if (conv.m_to != null && conv.m_to.gameObject.name.Equals(outputPrefab, System.StringComparison.OrdinalIgnoreCase))
-                    return conv.m_from?.gameObject.name;
             }
             return null;
         }
@@ -332,21 +331,19 @@ namespace MegaFactory
         }
 
         [HarmonyPostfix]
-        public static void Postfix(Smelter __instance, string ore)
+        public static void Postfix(Smelter __instance, string ore, int stack = 1)
         {
             var nview = __instance.GetComponent<ZNetView>();
             if (nview == null || !nview.IsValid()) return;
 
-            // ore is the OUTPUT prefab (e.g. "Eitr", "Copper", "Coal")
-            // but work orders track by INPUT prefab (e.g. "Sap", "CopperOre", "Wood").
-            // Map output → input so production gets credited to the correct work order.
-            string inputPrefab = FactoryProcessor.GetInputForOutput(__instance, ore);
-            string trackKey = inputPrefab ?? ore;
-
+            // Smelter.Spawn takes the INPUT prefab name ("Sap") and internally looks up
+            // m_conversion.m_to to instantiate the output. Spawn(string) overload also
+            // receives the input. Either way, `ore` here is the INPUT prefab — which is
+            // exactly what work orders are keyed by, so no output→input conversion needed.
             if (MegaFactoryPlugin.DebugMode.Value)
-                MegaFactoryPlugin.Log?.LogInfo($"[Smelter_Spawn_Patch] Produced output='{ore}' → tracking as input='{trackKey}'");
+                MegaFactoryPlugin.Log?.LogInfo($"[Smelter_Spawn_Patch] Spawn fired input='{ore}' stack={stack}");
 
-            WorkOrderManager.RecordProduction(nview, trackKey, 1);
+            WorkOrderManager.RecordProduction(nview, ore, stack);
         }
     }
 }
