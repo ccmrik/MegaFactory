@@ -24,6 +24,7 @@ namespace MegaFactory
         private const float PRUNE_INTERVAL = 30f;
 
         private static readonly MethodInfo _loadMethod;
+        private static readonly MethodInfo _saveMethod;
 
         static ContainerHelper()
         {
@@ -31,6 +32,8 @@ namespace MegaFactory
             _loadMethod = typeof(Container).GetMethod("Load", flags)
                        ?? typeof(Container).GetMethod("LoadInventory", flags)
                        ?? typeof(Container).GetMethod("ReadInventory", flags);
+            _saveMethod = typeof(Container).GetMethod("Save", flags)
+                       ?? typeof(Container).GetMethod("SaveInventory", flags);
         }
 
         public static ContainerType ClassifyContainer(Container container)
@@ -213,52 +216,84 @@ namespace MegaFactory
         }
 
         /// <summary>
-        /// Deposit items into a single container by creating proper ItemData entries.
+        /// Deposit items into a single container using Valheim's standard AddItem(prefab, amount)
+        /// which handles worldLevel/stacking/grid placement correctly, then persist via
+        /// Container.Save (reflection fallback to raw ZPackage if the method isn't found).
         /// Returns the number of items actually deposited.
         /// </summary>
         public static int DepositToContainer(Container container, string prefabName, int amount)
         {
+            if (container == null || amount <= 0) return 0;
+
+            var nview = container.GetComponent<ZNetView>();
+            if (nview == null || !nview.IsValid()) return 0;
+
             var inventory = container.GetInventory();
             if (inventory == null) return 0;
             EnsureLoaded(container, inventory);
 
-            // Look up the item prefab from the game databases
             GameObject prefab = ObjectDB.instance?.GetItemPrefab(prefabName);
             if (prefab == null) prefab = ZNetScene.instance?.GetPrefab(prefabName);
-            if (prefab == null) return 0;
+            if (prefab == null)
+            {
+                if (MegaFactoryPlugin.DebugMode.Value)
+                    MegaFactoryPlugin.Log?.LogWarning($"[Deposit] Prefab '{prefabName}' not in ObjectDB or ZNetScene — cannot deposit");
+                return 0;
+            }
+            if (prefab.GetComponent<ItemDrop>() == null)
+            {
+                if (MegaFactoryPlugin.DebugMode.Value)
+                    MegaFactoryPlugin.Log?.LogWarning($"[Deposit] Prefab '{prefabName}' has no ItemDrop component");
+                return 0;
+            }
 
-            ItemDrop itemDrop = prefab.GetComponent<ItemDrop>();
-            if (itemDrop == null) return 0;
+            // We MUST own the container ZDO or the write won't stick (another peer's
+            // authoritative state would overwrite us on next sync).
+            nview.ClaimOwnership();
 
             int deposited = 0;
             while (deposited < amount)
             {
-                ItemDrop.ItemData clone = itemDrop.m_itemData.Clone();
-                clone.m_stack = 1;
-                clone.m_dropPrefab = prefab;
-
-                if (!inventory.AddItem(clone))
-                    break; // Container full
-
+                if (!inventory.AddItem(prefab, 1))
+                    break; // container full
                 deposited++;
             }
 
             if (deposited > 0)
+            {
                 SaveContainerToZDO(container);
+                if (MegaFactoryPlugin.DebugMode.Value)
+                    MegaFactoryPlugin.Log?.LogInfo($"[Deposit] +{deposited} {prefabName} → {container.gameObject.name} (slots now: {inventory.NrOfItems()})");
+            }
 
             return deposited;
         }
 
+        /// <summary>
+        /// Persist a container's inventory. Prefer Container.Save() (vanilla method — updates
+        /// ZDO key and fires change events). Fall back to writing the ZPackage directly if
+        /// the method name ever changes.
+        /// </summary>
         public static void SaveContainerToZDO(Container container)
         {
             try
             {
                 var nview = container.GetComponent<ZNetView>();
-                if (nview == null || !nview.IsValid() || !nview.IsOwner()) return;
+                if (nview == null || !nview.IsValid()) return;
 
+                // Must be owner to persist — claim first if we're not.
+                if (!nview.IsOwner()) nview.ClaimOwnership();
+                if (!nview.IsOwner()) return;
+
+                if (_saveMethod != null)
+                {
+                    _saveMethod.Invoke(container, null);
+                    return;
+                }
+
+                // Fallback: raw serialization
                 var inv = container.GetInventory();
                 if (inv == null) return;
-
                 ZPackage pkg = new ZPackage();
                 inv.Save(pkg);
                 nview.GetZDO().Set(ZDOVars.s_items, pkg.GetBase64());

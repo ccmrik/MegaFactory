@@ -288,6 +288,16 @@ namespace MegaFactory
 
             InitStyles();
 
+            // Swallow ALL mouse buttons during this OnGUI pass so clicks (esp. attack)
+            // never reach the game world. Done before drawing so even mis-clicks outside
+            // the window don't trigger an attack swing.
+            var ev = Event.current;
+            if (ev != null && (ev.type == EventType.MouseDown || ev.type == EventType.MouseUp ||
+                               ev.type == EventType.MouseDrag || ev.type == EventType.ScrollWheel))
+            {
+                ev.Use();
+            }
+
             // Vignette the world
             GUI.color = new Color(0, 0, 0, 0.55f);
             GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
@@ -337,9 +347,9 @@ namespace MegaFactory
             string stationName = StationDefinitions.GetStationDisplayName(_stationType);
 
             GUILayout.Space(2);
-            // Runic title — ᛞ (Dagaz) bookends evoke a forge banner
-            GUILayout.Label($"ᛞ  W O R K   O R D E R  ᛞ", _titleStyle);
-            GUILayout.Label($"— {stationName} —", _subtitleStyle);
+            // Forge banner — Valheim's UI font lacks most unicode glyphs, so use ASCII.
+            GUILayout.Label("<< W O R K   O R D E R >>", _titleStyle);
+            GUILayout.Label($"~  {stationName}  ~", _subtitleStyle);
             DrawDivider();
 
             _scrollPos = GUILayout.BeginScrollView(_scrollPos, GUILayout.MaxHeight(380));
@@ -362,9 +372,9 @@ namespace MegaFactory
                 if (currentOrder != null && currentOrder.Requested > 0)
                 {
                     if (currentOrder.IsComplete)
-                        GUILayout.Label("✦ COMPLETE", _completeStyle);
+                        GUILayout.Label("[ COMPLETE ]", _completeStyle);
                     else
-                        GUILayout.Label($"⚒ {currentOrder.Remaining} left", _hintStyle);
+                        GUILayout.Label($"{currentOrder.Remaining} left", _hintStyle);
                 }
                 GUILayout.EndHorizontal();
 
@@ -419,7 +429,7 @@ namespace MegaFactory
 
             // Action row
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("⚒  FORGE ORDER", _submitButtonStyle, GUILayout.Height(34)))
+            if (GUILayout.Button("FORGE  ORDER", _submitButtonStyle, GUILayout.Height(34)))
                 SubmitOrder();
             GUILayout.Space(6);
             if (GUILayout.Button("Clear", _clearButtonStyle, GUILayout.Width(80), GUILayout.Height(34)))
@@ -527,6 +537,75 @@ namespace MegaFactory
         {
             if (WorkOrderGUI.Instance != null && WorkOrderGUI.Instance.IsVisible)
                 __result = false;
+        }
+    }
+
+    // Belt-and-braces: ZInput is what reads attack/use/block buttons. Force every
+    // button query to "not pressed" while our GUI is visible so a click on the panel
+    // can't bleed through and start a swing.
+    internal static class WorkOrderInputBlocker
+    {
+        public static bool IsBlocking
+            => WorkOrderGUI.Instance != null && WorkOrderGUI.Instance.IsVisible;
+    }
+
+    [HarmonyPatch(typeof(ZInput), nameof(ZInput.GetButton))]
+    public static class ZInput_GetButton_WorkOrder_Patch
+    {
+        [HarmonyPrefix]
+        public static bool Prefix(ref bool __result)
+        {
+            if (!WorkOrderInputBlocker.IsBlocking) return true;
+            __result = false;
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(ZInput), nameof(ZInput.GetButtonDown))]
+    public static class ZInput_GetButtonDown_WorkOrder_Patch
+    {
+        [HarmonyPrefix]
+        public static bool Prefix(ref bool __result)
+        {
+            if (!WorkOrderInputBlocker.IsBlocking) return true;
+            __result = false;
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(ZInput), nameof(ZInput.GetButtonUp))]
+    public static class ZInput_GetButtonUp_WorkOrder_Patch
+    {
+        [HarmonyPrefix]
+        public static bool Prefix(ref bool __result)
+        {
+            if (!WorkOrderInputBlocker.IsBlocking) return true;
+            __result = false;
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(ZInput), nameof(ZInput.GetMouseButton))]
+    public static class ZInput_GetMouseButton_WorkOrder_Patch
+    {
+        [HarmonyPrefix]
+        public static bool Prefix(ref bool __result)
+        {
+            if (!WorkOrderInputBlocker.IsBlocking) return true;
+            __result = false;
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(ZInput), nameof(ZInput.GetMouseButtonDown))]
+    public static class ZInput_GetMouseButtonDown_WorkOrder_Patch
+    {
+        [HarmonyPrefix]
+        public static bool Prefix(ref bool __result)
+        {
+            if (!WorkOrderInputBlocker.IsBlocking) return true;
+            __result = false;
+            return false;
         }
     }
 

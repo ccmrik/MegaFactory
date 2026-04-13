@@ -335,13 +335,20 @@ namespace MegaFactory
             var nview = __instance.GetComponent<ZNetView>();
             if (nview == null || !nview.IsValid()) return true;
 
-            // Only intercept stations the mod actually manages.
+            // Only intercept smelters the mod has registered (anything that fired Awake
+            // through our patch). This catches custom mod stations that name-matching would
+            // miss, and skips anything we explicitly disabled per-type.
+            if (!FactoryProcessor.AllSmelters.Contains(__instance)) return true;
+
             var stationType = ClassifyByName(__instance.gameObject.name);
-            if (stationType == null) return true;
-            if (!FactoryProcessor.IsStationManaged(stationType.Value)) return true;
+            if (stationType != null && !FactoryProcessor.IsStationManaged(stationType.Value)) return true;
 
             string outputPrefab = FactoryProcessor.GetOutputForInput(__instance, ore);
-            if (string.IsNullOrEmpty(outputPrefab)) return true; // unknown conversion → vanilla
+            if (string.IsNullOrEmpty(outputPrefab))
+            {
+                MegaFactoryPlugin.Log?.LogWarning($"[MegaFactory] Spawn fired with input='{ore}' on {__instance.gameObject.name} but no m_conversion match found — letting vanilla drop the item.");
+                return true;
+            }
 
             var player = Player.m_localPlayer;
             if (player == null) return true;
@@ -352,16 +359,14 @@ namespace MegaFactory
             var containers = ContainerHelper.FindNearbyContainers(__instance.transform.position, radius);
             if (containers.Count == 0)
             {
-                if (MegaFactoryPlugin.DebugMode.Value)
-                    MegaFactoryPlugin.Log?.LogInfo($"[Spawn_Intercept] No containers near {__instance.gameObject.name} → fallback to vanilla drop");
+                MegaFactoryPlugin.Log?.LogInfo($"[MegaFactory] {__instance.gameObject.name} produced {stack} {outputPrefab} but no managed container is within {radius:F0}m — vanilla will drop it on the ground.");
                 return true;
             }
 
             int deposited = ContainerHelper.DepositToContainers(containers, outputPrefab, stack);
             if (deposited <= 0)
             {
-                if (MegaFactoryPlugin.DebugMode.Value)
-                    MegaFactoryPlugin.Log?.LogInfo($"[Spawn_Intercept] Containers full (no {outputPrefab} room) → fallback to vanilla drop");
+                MegaFactoryPlugin.Log?.LogInfo($"[MegaFactory] {__instance.gameObject.name} produced {stack} {outputPrefab}, but no nearby container had room — vanilla drop.");
                 return true;
             }
 
@@ -372,8 +377,9 @@ namespace MegaFactory
             if (__instance.m_produceEffects != null)
                 __instance.m_produceEffects.Create(__instance.transform.position, __instance.transform.rotation);
 
-            if (MegaFactoryPlugin.DebugMode.Value)
-                MegaFactoryPlugin.Log?.LogInfo($"[Spawn_Intercept] {__instance.gameObject.name}: deposited {deposited}/{stack} {outputPrefab} into containers");
+            // Always log production at INFO so users can verify the patch is firing without
+            // toggling DebugMode. (Will become quieter if it ever gets noisy in practice.)
+            MegaFactoryPlugin.Log?.LogInfo($"[MegaFactory] {__instance.gameObject.name}: deposited {deposited}/{stack} {outputPrefab} into nearby containers.");
 
             // If we couldn't fit the full stack, let vanilla drop the remainder on the ground.
             // We can't modify `stack` mid-call without a transpiler, so accept the loss in
