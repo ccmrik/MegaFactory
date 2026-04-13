@@ -105,10 +105,11 @@ namespace MegaFactory
                 }
             }
 
-            // ── Auto-deposit output from spawn stack into containers ──
-            // The Eitr Refinery (and any m_spawnStack station) accumulates output
-            // internally instead of dropping it on the ground. Drain it into containers.
-            DrainSpawnStack(smelter, nview, containers);
+            // Note: we deliberately do NOT drain the spawn stack. Stations should behave
+            // like vanilla — output pops out physically at m_outputPoint when the buffer
+            // fills (spawnStack stations) or per-cycle (non-spawnStack). Users wanted the
+            // "just like a normal refinery" feel. DrainSpawnStack is kept in the file as a
+            // reference implementation in case it ever needs to come back behind a config.
 
             // ── Feed ore/inputs ──
             if (currentOre >= maxOre) return;
@@ -334,66 +335,32 @@ namespace MegaFactory
             return AccessTools.Method(typeof(Smelter), "Spawn", new System.Type[] { typeof(string) });
         }
 
-        [HarmonyPrefix]
-        public static bool Prefix(Smelter __instance, string ore, int stack = 1)
+        // Postfix — let vanilla Spawn drop the item physically at m_outputPoint like any
+        // other station. We just record the work-order progress so the GUI stays accurate.
+        // (Earlier builds used a Prefix that intercepted Spawn and teleported the output
+        // into nearby containers, but the user prefers stations to behave like vanilla —
+        // pop the item out, pick it up manually.)
+        [HarmonyPostfix]
+        public static void Postfix(Smelter __instance, string ore, int stack = 1)
         {
             var nview = __instance.GetComponent<ZNetView>();
-            if (nview == null || !nview.IsValid()) return true;
-
-            // Only intercept smelters the mod has registered (anything that fired Awake
-            // through our patch). This catches custom mod stations that name-matching would
-            // miss, and skips anything we explicitly disabled per-type.
-            if (!FactoryProcessor.AllSmelters.Contains(__instance)) return true;
+            if (nview == null || !nview.IsValid()) return;
+            if (!FactoryProcessor.AllSmelters.Contains(__instance)) return;
 
             var stationType = ClassifyByName(__instance.gameObject.name);
-            if (stationType != null && !FactoryProcessor.IsStationManaged(stationType.Value)) return true;
+            if (stationType != null && !FactoryProcessor.IsStationManaged(stationType.Value)) return;
 
-            string outputPrefab = FactoryProcessor.GetOutputForInput(__instance, ore);
-            if (string.IsNullOrEmpty(outputPrefab))
-            {
-                MegaFactoryPlugin.Log?.LogWarning($"[MegaFactory] Spawn fired with input='{ore}' on {__instance.gameObject.name} but no m_conversion match found — letting vanilla drop the item.");
-                return true;
-            }
+            // Guard against the Spawn(string) no-conversion no-op path — only credit when
+            // vanilla actually could/did spawn something. GetItemConversion searches m_from
+            // by name; if it matches, vanilla instantiated the m_to prefab at the output point.
+            if (FactoryProcessor.GetOutputForInput(__instance, ore) == null) return;
 
-            var player = Player.m_localPlayer;
-            if (player == null) return true;
+            WorkOrderManager.RecordProduction(nview, ore, stack);
 
-            float radius = MegaFactoryPlugin.SearchRadius.Value;
-            // Scope to containers near the station (not the player) — production happens
-            // wherever the station sits, even if the player wandered.
-            var containers = ContainerHelper.FindNearbyContainers(__instance.transform.position, radius);
-            if (containers.Count == 0)
-            {
-                MegaFactoryPlugin.Log?.LogInfo($"[MegaFactory] {__instance.gameObject.name} produced {stack} {outputPrefab} but no managed container is within {radius:F0}m — vanilla will drop it on the ground.");
-                return true;
-            }
-
-            int deposited = ContainerHelper.DepositToContainers(containers, outputPrefab, stack);
-            if (deposited <= 0)
-            {
-                string msg = $"{__instance.gameObject.name} produced {stack} {outputPrefab}, but no nearby container had room — vanilla drop.";
+            string msg = $"{__instance.gameObject.name} produced {stack} from '{ore}' (vanilla drop at output point).";
+            if (MegaFactoryPlugin.DebugMode.Value)
                 MegaFactoryPlugin.Log?.LogInfo($"[MegaFactory] {msg}");
-                DiagnosticsHud.RecordEvent($"NO ROOM: {msg}");
-                return true;
-            }
-
-            // Credit the work order (keyed by INPUT prefab — same as feeding).
-            WorkOrderManager.RecordProduction(nview, ore, deposited);
-
-            // Fire the produce VFX/SFX manually since we're skipping the original method.
-            if (__instance.m_produceEffects != null)
-                __instance.m_produceEffects.Create(__instance.transform.position, __instance.transform.rotation);
-
-            // Always log production at INFO so users can verify the patch is firing without
-            // toggling DebugMode. (Will become quieter if it ever gets noisy in practice.)
-            string okMsg = $"{__instance.gameObject.name}: deposited {deposited}/{stack} {outputPrefab} into nearby containers.";
-            MegaFactoryPlugin.Log?.LogInfo($"[MegaFactory] {okMsg}");
-            DiagnosticsHud.RecordEvent($"SPAWN INTERCEPT OK: {okMsg}");
-
-            // If we couldn't fit the full stack, let vanilla drop the remainder on the ground.
-            // We can't modify `stack` mid-call without a transpiler, so accept the loss in
-            // the rare partial-fit case — caller almost always has space if any.
-            return false;
+            DiagnosticsHud.RecordEvent($"PRODUCED: {msg}");
         }
 
         private static StationType? ClassifyByName(string rawName)
