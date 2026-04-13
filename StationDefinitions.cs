@@ -68,12 +68,18 @@ namespace MegaFactory
         };
         public static readonly string SpinningWheelFuel = null;
 
-        // Eitr Refinery: Soft Tissue fuel + Sap input
+        // Eitr Refinery: Sap is the FUEL, Soft Tissue is the ORE.
+        // Confirmed by the v1.2.2 diagnostic HUD against a live refinery:
+        //   m_fuelItem=Sap     m_conversion: Softtissue -> Eitr
+        // (Every release before v1.2.3 had these swapped, which is why no Eitr
+        // ever ejected — we fed Sap as ore, and Smelter.Spawn("Sap", ...)
+        // couldn't find a matching conversion in m_conversion.)
+        // Prefab name is "Softtissue" (lowercase 't') per valheim_data_dump.json.
         public static readonly InputItem[] EitrRefineryInputs = new InputItem[]
         {
-            new InputItem("Sap", "Sap"),
+            new InputItem("Softtissue", "Soft Tissue"),
         };
-        public static readonly string EitrRefineryFuel = "SoftTissue";
+        public static readonly string EitrRefineryFuel = "Sap";
 
         public static InputItem[] GetInputs(StationType type)
         {
