@@ -28,14 +28,35 @@ namespace MegaFactory
         private float _statusTimer;
 
         private static GUIStyle _titleStyle;
+        private static GUIStyle _subtitleStyle;
         private static GUIStyle _headerStyle;
         private static GUIStyle _buttonStyle;
         private static GUIStyle _clearButtonStyle;
+        private static GUIStyle _submitButtonStyle;
         private static GUIStyle _statusStyle;
         private static GUIStyle _inputStyle;
-        private static GUIStyle _progressStyle;
+        private static GUIStyle _progressTextStyle;
+        private static GUIStyle _completeStyle;
         private static GUIStyle _boxStyle;
+        private static GUIStyle _windowStyle;
+        private static GUIStyle _hintStyle;
+        private static Texture2D _txWood;
+        private static Texture2D _txParchment;
+        private static Texture2D _txGold;
+        private static Texture2D _txProgressFill;
+        private static Texture2D _txProgressDone;
+        private static Texture2D _txProgressBg;
+        private static Texture2D _txDivider;
         private static bool _stylesInitialized;
+
+        // Valheim-inspired palette
+        private static readonly Color C_WOOD       = new Color(0.13f, 0.09f, 0.05f, 0.97f); // dark stained oak
+        private static readonly Color C_PARCHMENT  = new Color(0.91f, 0.83f, 0.66f, 1.00f); // aged paper
+        private static readonly Color C_GOLD       = new Color(0.90f, 0.74f, 0.32f, 1.00f); // viking gold
+        private static readonly Color C_GOLD_DIM   = new Color(0.65f, 0.52f, 0.20f, 1.00f);
+        private static readonly Color C_RED_RUNE   = new Color(0.80f, 0.20f, 0.18f, 1.00f);
+        private static readonly Color C_GREEN_RUNE = new Color(0.45f, 0.85f, 0.40f, 1.00f);
+        private static readonly Color C_AMBER      = new Color(0.95f, 0.60f, 0.20f, 1.00f);
 
         public static WorkOrderGUI Instance
         {
@@ -77,8 +98,9 @@ namespace MegaFactory
                 _inputFields[input.PrefabName] = val;
             }
 
-            float width = 380f;
-            float height = 120f + _availableInputs.Length * 80f;
+            float width = 460f;
+            float height = 200f + _availableInputs.Length * 110f;
+            height = Mathf.Min(height, Screen.height * 0.85f);
             _windowRect = new Rect(Screen.width / 2f - width / 2f, Screen.height / 2f - height / 2f, width, height);
             _visible = true;
             if (MegaFactoryPlugin.DebugMode.Value)
@@ -120,36 +142,90 @@ namespace MegaFactory
             }
         }
 
+        private static Texture2D MakeTex(Color color)
+        {
+            var tex = new Texture2D(1, 1);
+            tex.SetPixel(0, 0, color);
+            tex.Apply();
+            tex.hideFlags = HideFlags.HideAndDontSave;
+            return tex;
+        }
+
         private static void InitStyles()
         {
             if (_stylesInitialized) return;
 
+            _txWood          = MakeTex(C_WOOD);
+            _txParchment     = MakeTex(C_PARCHMENT);
+            _txGold          = MakeTex(C_GOLD);
+            _txProgressBg    = MakeTex(new Color(0.08f, 0.06f, 0.03f, 1f));
+            _txProgressFill  = MakeTex(C_AMBER);
+            _txProgressDone  = MakeTex(C_GREEN_RUNE);
+            _txDivider       = MakeTex(C_GOLD_DIM);
+
+            _windowStyle = new GUIStyle(GUI.skin.window)
+            {
+                padding = new RectOffset(14, 14, 8, 14),
+                border  = new RectOffset(8, 8, 8, 8),
+                normal   = { background = _txWood, textColor = C_GOLD },
+                onNormal = { background = _txWood, textColor = C_GOLD },
+                hover    = { background = _txWood, textColor = C_GOLD },
+                onHover  = { background = _txWood, textColor = C_GOLD },
+                focused  = { background = _txWood, textColor = C_GOLD },
+                onFocused= { background = _txWood, textColor = C_GOLD },
+                active   = { background = _txWood, textColor = C_GOLD },
+                onActive = { background = _txWood, textColor = C_GOLD },
+            };
+
             _titleStyle = new GUIStyle(GUI.skin.label)
             {
-                fontSize = 18,
+                fontSize = 22,
                 fontStyle = FontStyle.Bold,
                 alignment = TextAnchor.MiddleCenter,
-                normal = { textColor = new Color(1f, 0.84f, 0f) }
+                normal = { textColor = C_GOLD }
+            };
+
+            _subtitleStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 13,
+                fontStyle = FontStyle.Italic,
+                alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = C_PARCHMENT }
             };
 
             _headerStyle = new GUIStyle(GUI.skin.label)
             {
-                fontSize = 13,
+                fontSize = 14,
                 fontStyle = FontStyle.Bold,
-                normal = { textColor = new Color(0.8f, 0.9f, 1f) }
+                normal = { textColor = C_GOLD }
             };
 
             _buttonStyle = new GUIStyle(GUI.skin.button)
             {
-                fontSize = 13,
-                fontStyle = FontStyle.Bold
-            };
-
-            _clearButtonStyle = new GUIStyle(GUI.skin.button)
-            {
                 fontSize = 12,
                 fontStyle = FontStyle.Bold,
-                normal = { textColor = new Color(1f, 0.4f, 0.4f) }
+                normal    = { background = _txProgressBg, textColor = C_PARCHMENT },
+                hover     = { background = _txGold,       textColor = C_WOOD },
+                active    = { background = _txGold,       textColor = C_WOOD },
+                focused   = { background = _txProgressBg, textColor = C_PARCHMENT },
+                border    = new RectOffset(2, 2, 2, 2),
+                padding   = new RectOffset(6, 6, 4, 4),
+            };
+
+            _submitButtonStyle = new GUIStyle(_buttonStyle)
+            {
+                fontSize = 14,
+                normal = { background = _txProgressBg, textColor = C_GOLD },
+                hover  = { background = _txGold,       textColor = C_WOOD },
+                active = { background = _txGold,       textColor = C_WOOD },
+            };
+
+            _clearButtonStyle = new GUIStyle(_buttonStyle)
+            {
+                fontSize = 13,
+                normal = { background = _txProgressBg, textColor = C_RED_RUNE },
+                hover  = { background = MakeTex(C_RED_RUNE), textColor = C_PARCHMENT },
+                active = { background = MakeTex(C_RED_RUNE), textColor = C_PARCHMENT },
             };
 
             _statusStyle = new GUIStyle(GUI.skin.label)
@@ -157,22 +233,51 @@ namespace MegaFactory
                 fontSize = 12,
                 fontStyle = FontStyle.Italic,
                 alignment = TextAnchor.MiddleCenter,
-                normal = { textColor = new Color(0.4f, 1f, 0.4f) }
+                normal = { textColor = C_GREEN_RUNE }
             };
 
             _inputStyle = new GUIStyle(GUI.skin.textField)
             {
-                fontSize = 14,
-                alignment = TextAnchor.MiddleCenter
+                fontSize = 16,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter,
+                normal    = { background = _txParchment, textColor = C_WOOD },
+                hover     = { background = _txParchment, textColor = C_WOOD },
+                focused   = { background = MakeTex(new Color(1f, 0.95f, 0.78f)), textColor = C_WOOD },
+                padding   = new RectOffset(4, 4, 4, 4),
             };
 
-            _progressStyle = new GUIStyle(GUI.skin.label)
+            _progressTextStyle = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 11,
-                normal = { textColor = new Color(0.7f, 0.7f, 0.7f) }
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = C_PARCHMENT }
             };
 
-            _boxStyle = new GUIStyle(GUI.skin.box);
+            _completeStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 11,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleLeft,
+                normal = { textColor = C_GREEN_RUNE }
+            };
+
+            _hintStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 10,
+                fontStyle = FontStyle.Italic,
+                alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = C_GOLD_DIM }
+            };
+
+            _boxStyle = new GUIStyle(GUI.skin.box)
+            {
+                normal = { background = MakeTex(new Color(0.20f, 0.14f, 0.08f, 0.95f)), textColor = C_PARCHMENT },
+                border = new RectOffset(4, 4, 4, 4),
+                padding = new RectOffset(10, 10, 8, 8),
+                margin = new RectOffset(0, 0, 4, 4),
+            };
 
             _stylesInitialized = true;
         }
@@ -183,87 +288,151 @@ namespace MegaFactory
 
             InitStyles();
 
-            // Darken background
-            GUI.color = new Color(0, 0, 0, 0.5f);
+            // Vignette the world
+            GUI.color = new Color(0, 0, 0, 0.55f);
             GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
             GUI.color = Color.white;
 
-            _windowRect = GUI.Window(98765, _windowRect, DrawWindow, "", GUI.skin.window);
+            _windowRect = GUI.Window(98765, _windowRect, DrawWindow, "", _windowStyle);
+        }
+
+        // Decorative gold horizontal divider with twin runes
+        private void DrawDivider()
+        {
+            GUILayout.Space(4);
+            var rect = GUILayoutUtility.GetRect(1, 2, GUILayout.ExpandWidth(true));
+            // Inset by a few pixels so the line doesn't kiss the wood frame
+            var line = new Rect(rect.x + 12, rect.y, rect.width - 24, 1.5f);
+            GUI.DrawTexture(line, _txDivider);
+            GUILayout.Space(4);
+        }
+
+        // Manual progress bar — Valheim-flavoured (amber while working, green when done)
+        private void DrawProgressBar(int produced, int requested)
+        {
+            float pct = requested > 0 ? Mathf.Clamp01((float)produced / requested) : 0f;
+            bool done = produced >= requested && requested > 0;
+
+            var rect = GUILayoutUtility.GetRect(0f, 18f, GUILayout.ExpandWidth(true), GUILayout.Height(18));
+            GUI.DrawTexture(rect, _txProgressBg);
+
+            if (pct > 0f)
+            {
+                var fillRect = new Rect(rect.x, rect.y, rect.width * pct, rect.height);
+                GUI.DrawTexture(fillRect, done ? _txProgressDone : _txProgressFill);
+            }
+
+            // Gold border (top + bottom rules)
+            GUI.DrawTexture(new Rect(rect.x, rect.y,                rect.width, 1f), _txDivider);
+            GUI.DrawTexture(new Rect(rect.x, rect.y + rect.height - 1f, rect.width, 1f), _txDivider);
+
+            string label = requested > 0
+                ? $"{produced} / {requested}   ({pct * 100f:F0}%)"
+                : "—";
+            GUI.Label(rect, label, _progressTextStyle);
         }
 
         private void DrawWindow(int windowId)
         {
             string stationName = StationDefinitions.GetStationDisplayName(_stationType);
-            GUILayout.Space(5);
-            GUILayout.Label($"Work Order: {stationName}", _titleStyle);
-            GUILayout.Space(10);
 
-            _scrollPos = GUILayout.BeginScrollView(_scrollPos);
+            GUILayout.Space(2);
+            // Runic title — ᛞ (Dagaz) bookends evoke a forge banner
+            GUILayout.Label($"ᛞ  W O R K   O R D E R  ᛞ", _titleStyle);
+            GUILayout.Label($"— {stationName} —", _subtitleStyle);
+            DrawDivider();
+
+            _scrollPos = GUILayout.BeginScrollView(_scrollPos, GUILayout.MaxHeight(380));
 
             foreach (var input in _availableInputs)
             {
+                // Find current order for this input (if any)
+                WorkOrder currentOrder = null;
+                foreach (var o in _currentOrders)
+                {
+                    if (o.PrefabName == input.PrefabName) { currentOrder = o; break; }
+                }
+
                 GUILayout.BeginVertical(_boxStyle);
 
-                GUILayout.Label(input.DisplayName, _headerStyle);
-
+                // Header row: item name + status badge
                 GUILayout.BeginHorizontal();
-                GUILayout.Label("Quantity:", GUILayout.Width(65));
+                GUILayout.Label(input.DisplayName, _headerStyle);
+                GUILayout.FlexibleSpace();
+                if (currentOrder != null && currentOrder.Requested > 0)
+                {
+                    if (currentOrder.IsComplete)
+                        GUILayout.Label("✦ COMPLETE", _completeStyle);
+                    else
+                        GUILayout.Label($"⚒ {currentOrder.Remaining} left", _hintStyle);
+                }
+                GUILayout.EndHorizontal();
+
+                GUILayout.Space(4);
+
+                // Quantity row
+                GUILayout.BeginHorizontal();
+                GUILayout.Label("Quantity", GUILayout.Width(60));
 
                 if (!_inputFields.ContainsKey(input.PrefabName))
                     _inputFields[input.PrefabName] = "0";
 
-                _inputFields[input.PrefabName] = GUILayout.TextField(_inputFields[input.PrefabName], _inputStyle, GUILayout.Width(80));
+                _inputFields[input.PrefabName] = GUILayout.TextField(
+                    _inputFields[input.PrefabName], _inputStyle,
+                    GUILayout.Width(72), GUILayout.Height(26));
 
-                // Quick-set buttons
-                if (GUILayout.Button("10", _buttonStyle, GUILayout.Width(35)))
+                GUILayout.Space(6);
+
+                if (GUILayout.Button("10",  _buttonStyle, GUILayout.Width(36), GUILayout.Height(26)))
                     _inputFields[input.PrefabName] = "10";
-                if (GUILayout.Button("50", _buttonStyle, GUILayout.Width(35)))
+                if (GUILayout.Button("50",  _buttonStyle, GUILayout.Width(36), GUILayout.Height(26)))
                     _inputFields[input.PrefabName] = "50";
-                if (GUILayout.Button("100", _buttonStyle, GUILayout.Width(40)))
+                if (GUILayout.Button("100", _buttonStyle, GUILayout.Width(42), GUILayout.Height(26)))
                     _inputFields[input.PrefabName] = "100";
-                if (GUILayout.Button("500", _buttonStyle, GUILayout.Width(40)))
+                if (GUILayout.Button("500", _buttonStyle, GUILayout.Width(42), GUILayout.Height(26)))
                     _inputFields[input.PrefabName] = "500";
 
+                GUILayout.FlexibleSpace();
                 GUILayout.EndHorizontal();
 
-                // Show progress for existing orders
-                foreach (var order in _currentOrders)
+                // Progress bar
+                if (currentOrder != null && currentOrder.Requested > 0)
                 {
-                    if (order.PrefabName == input.PrefabName && order.Requested > 0)
-                    {
-                        float pct = order.Requested > 0 ? (float)order.Produced / order.Requested : 0f;
-                        GUILayout.Label($"  Progress: {order.Produced}/{order.Requested} ({pct:P0})", _progressStyle);
-                    }
+                    GUILayout.Space(4);
+                    DrawProgressBar(currentOrder.Produced, currentOrder.Requested);
                 }
 
                 GUILayout.EndVertical();
-                GUILayout.Space(3);
+                GUILayout.Space(2);
             }
 
             GUILayout.EndScrollView();
 
-            GUILayout.Space(5);
+            DrawDivider();
 
-            // Status message
+            // Status message (transient confirmation toast)
             if (_statusTimer > 0 && !string.IsNullOrEmpty(_statusMessage))
+            {
                 GUILayout.Label(_statusMessage, _statusStyle);
+                GUILayout.Space(4);
+            }
 
-            GUILayout.Space(5);
-
+            // Action row
             GUILayout.BeginHorizontal();
-
-            if (GUILayout.Button("Submit Order", _buttonStyle, GUILayout.Height(30)))
+            if (GUILayout.Button("⚒  FORGE ORDER", _submitButtonStyle, GUILayout.Height(34)))
                 SubmitOrder();
-
-            if (GUILayout.Button("Clear All", _clearButtonStyle, GUILayout.Height(30)))
+            GUILayout.Space(6);
+            if (GUILayout.Button("Clear", _clearButtonStyle, GUILayout.Width(80), GUILayout.Height(34)))
                 ClearOrders();
-
-            if (GUILayout.Button("Close", _buttonStyle, GUILayout.Height(30)))
+            GUILayout.Space(6);
+            if (GUILayout.Button("Close", _buttonStyle, GUILayout.Width(80), GUILayout.Height(34)))
                 Hide();
-
             GUILayout.EndHorizontal();
 
-            GUI.DragWindow(new Rect(0, 0, _windowRect.width, 30));
+            GUILayout.Space(4);
+            GUILayout.Label("Re-submit a completed order to start another batch.", _hintStyle);
+
+            GUI.DragWindow(new Rect(0, 0, _windowRect.width, 36));
         }
 
         private void SubmitOrder()
@@ -282,13 +451,18 @@ namespace MegaFactory
                 if (!_inputFields.TryGetValue(input.PrefabName, out string val)) continue;
                 if (!int.TryParse(val, out int qty) || qty <= 0) continue;
 
-                // Check if there's an existing order to carry over progress
+                // Carry over progress for IN-PROGRESS orders only.
+                // If the prior order was already complete, treat this as a fresh
+                // batch (Produced=0) so the user can re-run the same recipe without
+                // having to "Clear All" first.
                 int existingProduced = 0;
                 foreach (var existing in _currentOrders)
                 {
                     if (existing.PrefabName == input.PrefabName)
                     {
-                        existingProduced = existing.Produced;
+                        if (!existing.IsComplete && existing.Produced < qty)
+                            existingProduced = existing.Produced;
+                        // else: complete or quantity reduced below progress → reset to 0
                         break;
                     }
                 }

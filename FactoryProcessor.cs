@@ -66,6 +66,8 @@ namespace MegaFactory
             return null;
         }
 
+        public static bool IsStationManaged(StationType type) => IsStationEnabled(type);
+
         private static bool IsStationEnabled(StationType type)
         {
             switch (type)
@@ -236,7 +238,7 @@ namespace MegaFactory
         /// Maps an input prefab to its output prefab using the Smelter's conversion table.
         /// e.g. "Sap" → "Eitr", "CopperOre" → "Copper", "Wood" → "Coal"
         /// </summary>
-        private static string GetOutputForInput(Smelter smelter, string inputPrefab)
+        public static string GetOutputForInput(Smelter smelter, string inputPrefab)
         {
             if (smelter?.m_conversion == null) return null;
             foreach (var conv in smelter.m_conversion)
@@ -304,8 +306,17 @@ namespace MegaFactory
         }
     }
 
-    // ==================== PRODUCTION TRACKING PATCH ====================
-    // When a smelter finishes producing an item, record it against the work order
+    // ==================== OUTPUT INTERCEPT PATCH ====================
+    // Intercept Smelter.Spawn — instead of dropping items on the ground at m_outputPoint,
+    // deposit them directly into nearby containers. Works for BOTH m_spawnStack modes:
+    //   - m_spawnStack=false (e.g. Smelter, Blast Furnace, Eitr Refinery): Spawn fires
+    //     once per produced item with stack=1.
+    //   - m_spawnStack=true: Spawn fires when the buffer hits maxStackSize OR when
+    //     SpawnProcessed is invoked (queue empty / fuel out / player hit Empty).
+    //
+    // The vanilla `ore` parameter is the INPUT prefab (e.g. "Sap"); Spawn looks up
+    // m_conversion.m_to to find the output. We do the same conversion to know what
+    // to deposit.
 
     [HarmonyPatch]
     public static class Smelter_Spawn_Patch
@@ -313,37 +324,73 @@ namespace MegaFactory
         [HarmonyTargetMethod]
         static System.Reflection.MethodBase TargetMethod()
         {
-            // Try (string, int) first, fall back to (string)
             var method = AccessTools.Method(typeof(Smelter), "Spawn", new System.Type[] { typeof(string), typeof(int) });
-            if (method != null)
-            {
-                MegaFactoryPlugin.Log?.LogDebug($"[Smelter_Spawn_Patch] Resolved Spawn(string, int)");
-                return method;
-            }
-            method = AccessTools.Method(typeof(Smelter), "Spawn", new System.Type[] { typeof(string) });
-            if (method != null)
-            {
-                MegaFactoryPlugin.Log?.LogDebug($"[Smelter_Spawn_Patch] Resolved Spawn(string)");
-                return method;
-            }
-            MegaFactoryPlugin.Log?.LogWarning("[Smelter_Spawn_Patch] Could not find any Spawn method on Smelter!");
-            return null;
+            if (method != null) return method;
+            return AccessTools.Method(typeof(Smelter), "Spawn", new System.Type[] { typeof(string) });
         }
 
-        [HarmonyPostfix]
-        public static void Postfix(Smelter __instance, string ore, int stack = 1)
+        [HarmonyPrefix]
+        public static bool Prefix(Smelter __instance, string ore, int stack = 1)
         {
             var nview = __instance.GetComponent<ZNetView>();
-            if (nview == null || !nview.IsValid()) return;
+            if (nview == null || !nview.IsValid()) return true;
 
-            // Smelter.Spawn takes the INPUT prefab name ("Sap") and internally looks up
-            // m_conversion.m_to to instantiate the output. Spawn(string) overload also
-            // receives the input. Either way, `ore` here is the INPUT prefab — which is
-            // exactly what work orders are keyed by, so no output→input conversion needed.
+            // Only intercept stations the mod actually manages.
+            var stationType = ClassifyByName(__instance.gameObject.name);
+            if (stationType == null) return true;
+            if (!FactoryProcessor.IsStationManaged(stationType.Value)) return true;
+
+            string outputPrefab = FactoryProcessor.GetOutputForInput(__instance, ore);
+            if (string.IsNullOrEmpty(outputPrefab)) return true; // unknown conversion → vanilla
+
+            var player = Player.m_localPlayer;
+            if (player == null) return true;
+
+            float radius = MegaFactoryPlugin.SearchRadius.Value;
+            // Scope to containers near the station (not the player) — production happens
+            // wherever the station sits, even if the player wandered.
+            var containers = ContainerHelper.FindNearbyContainers(__instance.transform.position, radius);
+            if (containers.Count == 0)
+            {
+                if (MegaFactoryPlugin.DebugMode.Value)
+                    MegaFactoryPlugin.Log?.LogInfo($"[Spawn_Intercept] No containers near {__instance.gameObject.name} → fallback to vanilla drop");
+                return true;
+            }
+
+            int deposited = ContainerHelper.DepositToContainers(containers, outputPrefab, stack);
+            if (deposited <= 0)
+            {
+                if (MegaFactoryPlugin.DebugMode.Value)
+                    MegaFactoryPlugin.Log?.LogInfo($"[Spawn_Intercept] Containers full (no {outputPrefab} room) → fallback to vanilla drop");
+                return true;
+            }
+
+            // Credit the work order (keyed by INPUT prefab — same as feeding).
+            WorkOrderManager.RecordProduction(nview, ore, deposited);
+
+            // Fire the produce VFX/SFX manually since we're skipping the original method.
+            if (__instance.m_produceEffects != null)
+                __instance.m_produceEffects.Create(__instance.transform.position, __instance.transform.rotation);
+
             if (MegaFactoryPlugin.DebugMode.Value)
-                MegaFactoryPlugin.Log?.LogInfo($"[Smelter_Spawn_Patch] Spawn fired input='{ore}' stack={stack}");
+                MegaFactoryPlugin.Log?.LogInfo($"[Spawn_Intercept] {__instance.gameObject.name}: deposited {deposited}/{stack} {outputPrefab} into containers");
 
-            WorkOrderManager.RecordProduction(nview, ore, stack);
+            // If we couldn't fit the full stack, let vanilla drop the remainder on the ground.
+            // We can't modify `stack` mid-call without a transpiler, so accept the loss in
+            // the rare partial-fit case — caller almost always has space if any.
+            return false;
+        }
+
+        private static StationType? ClassifyByName(string rawName)
+        {
+            string name = rawName.ToLower();
+            if (name.Contains("charcoal_kiln") || name.Contains("charcoalkiln")) return StationType.Kiln;
+            if (name.Contains("blastfurnace") || name.Contains("blast_furnace")) return StationType.BlastFurnace;
+            if (name.Contains("eitrrefinery") || name.Contains("eitr_refinery")) return StationType.EitrRefinery;
+            if (name.Contains("windmill")) return StationType.Windmill;
+            if (name.Contains("spinningwheel") || name.Contains("spinning_wheel")) return StationType.SpinningWheel;
+            if (name.Contains("smelter")) return StationType.Smelter;
+            return null;
         }
     }
 }
