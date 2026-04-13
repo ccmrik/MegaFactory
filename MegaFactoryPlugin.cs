@@ -15,7 +15,7 @@ namespace MegaFactory
     {
         public const string PluginGUID = "com.rik.megafactory";
         public const string PluginName = "Mega Factory";
-        public const string PluginVersion = "1.2.1";
+        public const string PluginVersion = "1.2.2";
 
         internal static ManualLogSource Log;
         private static Harmony _harmony;
@@ -50,6 +50,9 @@ namespace MegaFactory
 
         // ── Work Order GUI ──
         public static ConfigEntry<KeyCode> WorkOrderKey;
+
+        // ── Diagnostics ──
+        public static ConfigEntry<KeyCode> DiagnosticsHotkey;
 
         // ── Debug ──
         public static ConfigEntry<bool> DebugMode;
@@ -103,8 +106,12 @@ namespace MegaFactory
             WorkOrderKey = Config.Bind("8. Work Orders", "InteractKey", KeyCode.LeftShift,
                 "Hold this key + interact (E) with a station to open the Work Order panel");
 
-            // 9. Debug
-            DebugMode = Config.Bind("9. Debug", "DebugMode", false,
+            // 9. Diagnostics (for troubleshooting production issues)
+            DiagnosticsHotkey = Config.Bind("9. Diagnostics", "ToggleHotkey", KeyCode.F8,
+                "Toggle the on-screen diagnostic overlay AND dump the nearest station's state to the log.");
+
+            // 10. Debug
+            DebugMode = Config.Bind("10. Debug", "DebugMode", false,
                 "Enable verbose debug logging to BepInEx console/log");
 
             _config = Config;
@@ -122,7 +129,13 @@ namespace MegaFactory
                 Log.LogError(ex.ToString());
             }
 
-            Log.LogInfo($"{PluginName} loaded successfully!");
+            // Create the diagnostics HUD singleton eagerly so F8 works immediately.
+            _ = DiagnosticsHud.Instance;
+
+            Log.LogInfo($"========================================");
+            Log.LogInfo($"{PluginName} v{PluginVersion} loaded successfully!");
+            Log.LogInfo($"  Press {DiagnosticsHotkey.Value} near a station to toggle diagnostics HUD + dump state to log.");
+            Log.LogInfo($"========================================");
         }
 
         private void SetupConfigWatcher()

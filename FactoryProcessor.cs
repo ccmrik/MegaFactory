@@ -186,7 +186,11 @@ namespace MegaFactory
             }
 
             int deposited = ContainerHelper.DepositToContainers(containers, outputPrefab, spawnAmount);
-            if (deposited <= 0) return;
+            if (deposited <= 0)
+            {
+                DiagnosticsHud.RecordEvent($"DrainSpawnStack: 0 deposited ({spawnAmount} {outputPrefab} stuck in buffer)");
+                return;
+            }
 
             nview.ClaimOwnership();
             int remaining = spawnAmount - deposited;
@@ -197,8 +201,9 @@ namespace MegaFactory
             // Credit the work order (keyed by INPUT prefab, same as feeding).
             WorkOrderManager.RecordProduction(nview, spawnOre, deposited);
 
-            if (MegaFactoryPlugin.DebugMode.Value)
-                MegaFactoryPlugin.Log?.LogInfo($"[DrainSpawnStack] Deposited {deposited} {outputPrefab} (from '{spawnOre}' buffer) into containers ({remaining} remaining in stack)");
+            string msg = $"DrainSpawnStack: {deposited} {outputPrefab} from '{spawnOre}' buffer → containers ({remaining} left in stack)";
+            MegaFactoryPlugin.Log?.LogInfo($"[MegaFactory] {msg}");
+            DiagnosticsHud.RecordEvent($"DRAIN OK: {msg}");
         }
 
         private static int GetQueuedOreCount(ZNetView nview, Smelter smelter)
@@ -366,7 +371,9 @@ namespace MegaFactory
             int deposited = ContainerHelper.DepositToContainers(containers, outputPrefab, stack);
             if (deposited <= 0)
             {
-                MegaFactoryPlugin.Log?.LogInfo($"[MegaFactory] {__instance.gameObject.name} produced {stack} {outputPrefab}, but no nearby container had room — vanilla drop.");
+                string msg = $"{__instance.gameObject.name} produced {stack} {outputPrefab}, but no nearby container had room — vanilla drop.";
+                MegaFactoryPlugin.Log?.LogInfo($"[MegaFactory] {msg}");
+                DiagnosticsHud.RecordEvent($"NO ROOM: {msg}");
                 return true;
             }
 
@@ -379,7 +386,9 @@ namespace MegaFactory
 
             // Always log production at INFO so users can verify the patch is firing without
             // toggling DebugMode. (Will become quieter if it ever gets noisy in practice.)
-            MegaFactoryPlugin.Log?.LogInfo($"[MegaFactory] {__instance.gameObject.name}: deposited {deposited}/{stack} {outputPrefab} into nearby containers.");
+            string okMsg = $"{__instance.gameObject.name}: deposited {deposited}/{stack} {outputPrefab} into nearby containers.";
+            MegaFactoryPlugin.Log?.LogInfo($"[MegaFactory] {okMsg}");
+            DiagnosticsHud.RecordEvent($"SPAWN INTERCEPT OK: {okMsg}");
 
             // If we couldn't fit the full stack, let vanilla drop the remainder on the ground.
             // We can't modify `stack` mid-call without a transpiler, so accept the loss in
