@@ -15,7 +15,7 @@ namespace MegaFactory
     {
         public const string PluginGUID = "com.rik.megafactory";
         public const string PluginName = "Mega Factory";
-        public const string PluginVersion = "1.3.1";
+        public const string PluginVersion = "1.3.2";
 
         internal static ManualLogSource Log;
         private static Harmony _harmony;
@@ -69,7 +69,6 @@ namespace MegaFactory
         private void Awake()
         {
             Log = Logger;
-            Log.LogInfo($"{PluginName} v{PluginVersion} loading...");
 
             MigrateConfig(Config.ConfigFilePath);
             Config.Reload();
