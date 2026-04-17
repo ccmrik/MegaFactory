@@ -15,7 +15,7 @@ namespace MegaFactory
     {
         public const string PluginGUID = "com.rik.megafactory";
         public const string PluginName = "Mega Factory";
-        public const string PluginVersion = "1.3.0";
+        public const string PluginVersion = "1.3.1";
 
         internal static ManualLogSource Log;
         private static Harmony _harmony;
@@ -59,6 +59,12 @@ namespace MegaFactory
 
         // Timers
         private static float _processTimer;
+
+        /// <summary>Gated diagnostic log. Silent unless DebugMode = true.</summary>
+        public static void DebugLog(string msg)
+        {
+            if (DebugMode?.Value == true) Log?.LogInfo(msg);
+        }
 
         private void Awake()
         {
@@ -121,7 +127,7 @@ namespace MegaFactory
             try
             {
                 _harmony.PatchAll(Assembly.GetExecutingAssembly());
-                Log.LogInfo($"Harmony patches applied successfully.");
+                DebugLog($"Harmony patches applied successfully.");
             }
             catch (Exception ex)
             {
@@ -132,10 +138,7 @@ namespace MegaFactory
             // Create the diagnostics HUD singleton eagerly so F8 works immediately.
             _ = DiagnosticsHud.Instance;
 
-            Log.LogInfo($"========================================");
-            Log.LogInfo($"{PluginName} v{PluginVersion} loaded successfully!");
-            Log.LogInfo($"  Press {DiagnosticsHotkey.Value} near a station to toggle diagnostics HUD + dump state to log.");
-            Log.LogInfo($"========================================");
+            Log.LogInfo($"{PluginName} v{PluginVersion} loaded! Press {DiagnosticsHotkey.Value} near a station for diagnostics HUD.");
         }
 
         private void SetupConfigWatcher()
@@ -158,7 +161,7 @@ namespace MegaFactory
             {
                 System.Threading.Thread.Sleep(100);
                 _config.Reload();
-                Log.LogInfo("Config reloaded!");
+                DebugLog("Config reloaded!");
                 if (Player.m_localPlayer != null)
                     Player.m_localPlayer.Message(MessageHud.MessageType.Center, "MegaFactory Config Reloaded!");
             }

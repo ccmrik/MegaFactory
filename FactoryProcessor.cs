@@ -203,7 +203,7 @@ namespace MegaFactory
             WorkOrderManager.RecordProduction(nview, spawnOre, deposited);
 
             string msg = $"DrainSpawnStack: {deposited} {outputPrefab} from '{spawnOre}' buffer → containers ({remaining} left in stack)";
-            MegaFactoryPlugin.Log?.LogInfo($"[MegaFactory] {msg}");
+            MegaFactoryPlugin.DebugLog($"[MegaFactory] {msg}");
             DiagnosticsHud.RecordEvent($"DRAIN OK: {msg}");
         }
 
