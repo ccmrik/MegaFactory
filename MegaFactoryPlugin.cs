@@ -15,7 +15,7 @@ namespace MegaFactory
     {
         public const string PluginGUID = "com.rik.megafactory";
         public const string PluginName = "Mega Factory";
-        public const string PluginVersion = "1.2.4";
+        public const string PluginVersion = "1.3.0";
 
         internal static ManualLogSource Log;
         private static Harmony _harmony;
@@ -110,8 +110,8 @@ namespace MegaFactory
             DiagnosticsHotkey = Config.Bind("9. Diagnostics", "ToggleHotkey", KeyCode.F8,
                 "Toggle the on-screen diagnostic overlay AND dump the nearest station's state to the log.");
 
-            // 10. Debug
-            DebugMode = Config.Bind("10. Debug", "DebugMode", false,
+            // 99. Debug — standardised section name across all Mega mods (v1.3.0+)
+            DebugMode = Config.Bind("99. Debug", "DebugMode", false,
                 "Enable verbose debug logging to BepInEx console/log");
 
             _config = Config;
@@ -202,6 +202,8 @@ namespace MegaFactory
 
                 // Migrate old v1.0.x section (Work Orders was 7, now 8)
                 changed |= MigrateCfgSection(ref text, "7. Work Orders", "8. Work Orders");
+                // v1.3.0 standardises debug section to "99. Debug"
+                changed |= MigrateCfgSection(ref text, "10. Debug", "99. Debug");
 
                 if (changed)
                     File.WriteAllText(configPath, text.TrimEnd() + "\n");
