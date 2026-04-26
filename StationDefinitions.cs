@@ -37,10 +37,15 @@ namespace MegaFactory
         public static readonly string KilnFuel = null; // Kiln doesn't use fuel — wood IS the input
 
         // Smelter: Coal fuel + ore inputs
+        // Scrap variants (BronzeScrap → Bronze, CopperScrap → Copper) live in
+        // Valheim's Smelter.m_conversion table — adding them here makes them
+        // selectable as work orders so the auto-feeder can salvage them too.
         public static readonly InputItem[] SmelterOres = new InputItem[]
         {
             new InputItem("CopperOre", "Copper Ore"),
+            new InputItem("CopperScrap", "Scrap Copper"),
             new InputItem("TinOre", "Tin Ore"),
+            new InputItem("BronzeScrap", "Scrap Bronze"),
             new InputItem("IronScrap", "Iron Scrap"),
             new InputItem("SilverOre", "Silver Ore"),
         };
