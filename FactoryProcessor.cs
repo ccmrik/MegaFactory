@@ -13,16 +13,18 @@ namespace MegaFactory
         // Registries populated by Harmony patches
         public static readonly HashSet<Smelter> AllSmelters = new HashSet<Smelter>();
 
-        public static void ProcessAllStations(Vector3 playerPos, float radius)
+        // Background processing: iterate every loaded smelter regardless of player
+        // distance. Each station finds containers within SearchRadius of itself
+        // (not of the player) so factories keep producing while the player is on
+        // the other side of the map.
+        public static void ProcessAllStations()
         {
-            float radiusSq = radius * radius;
-            var containers = ContainerHelper.FindNearbyContainers(playerPos, radius);
-            if (containers.Count == 0) return;
+            if (AllSmelters.Count == 0) return;
 
+            float radius = MegaFactoryPlugin.SearchRadius.Value;
             foreach (var smelter in AllSmelters)
             {
                 if (smelter == null) continue;
-                if ((playerPos - smelter.transform.position).sqrMagnitude > radiusSq) continue;
 
                 var nview = smelter.GetComponent<ZNetView>();
                 if (nview == null || !nview.IsValid()) continue;
@@ -30,6 +32,9 @@ namespace MegaFactory
                 var stationType = ClassifySmelter(smelter);
                 if (stationType == null) continue;
                 if (!IsStationEnabled(stationType.Value)) continue;
+
+                var containers = ContainerHelper.FindNearbyContainers(smelter.transform.position, radius);
+                if (containers.Count == 0) continue;
 
                 ProcessSmelter(smelter, nview, stationType.Value, containers);
             }

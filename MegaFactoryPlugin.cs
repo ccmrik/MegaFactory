@@ -15,7 +15,7 @@ namespace MegaFactory
     {
         public const string PluginGUID = "com.rik.megafactory";
         public const string PluginName = "Mega Factory";
-        public const string PluginVersion = "1.3.3";
+        public const string PluginVersion = "1.4.0";
 
         internal static ManualLogSource Log;
         private static Harmony _harmony;
@@ -172,14 +172,16 @@ namespace MegaFactory
 
         private void Update()
         {
-            Player player = Player.m_localPlayer;
-            if (player == null) return;
+            // Gate on local player so we don't tick during the main menu / loading,
+            // but processing itself no longer cares where the player is — every
+            // loaded smelter ticks via FactoryProcessor.ProcessAllStations.
+            if (Player.m_localPlayer == null) return;
 
             _processTimer += Time.deltaTime;
             if (_processTimer >= ProcessInterval.Value)
             {
                 _processTimer = 0f;
-                FactoryProcessor.ProcessAllStations(player.transform.position, SearchRadius.Value);
+                FactoryProcessor.ProcessAllStations();
             }
         }
 

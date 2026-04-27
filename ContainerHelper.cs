@@ -142,7 +142,8 @@ namespace MegaFactory
         }
 
         /// <summary>
-        /// Take items from a container, always leaving at least 1 of that item type.
+        /// Take items from a container, always leaving at least 1 of that item type
+        /// in TOTAL (not 1 per stack). e.g. 8 stacks of 50 wood → leave 1, take 399.
         /// Returns the number of items actually taken.
         /// </summary>
         public static int TakeFromContainer(Container container, string prefabName, int amount)
@@ -151,24 +152,40 @@ namespace MegaFactory
             if (inventory == null) return 0;
             EnsureLoaded(container, inventory);
 
-            int taken = 0;
+            // Collect every stack of this prefab; sum the total so we know the
+            // type-wide budget after the leave-1 rule.
+            var stacks = new List<ItemDrop.ItemData>();
+            int total = 0;
             foreach (var item in inventory.GetAllItems())
             {
                 if (item == null) continue;
                 string itemPrefab = item.m_dropPrefab != null ? item.m_dropPrefab.name : "";
                 if (!itemPrefab.Equals(prefabName, System.StringComparison.OrdinalIgnoreCase)) continue;
+                stacks.Add(item);
+                total += item.m_stack;
+            }
+            if (stacks.Count == 0 || total <= 1) return 0;
 
-                // Always leave 1
-                int available = item.m_stack - 1;
-                if (available <= 0) continue;
+            int available = total - 1;
+            int toTake = Mathf.Min(available, amount);
+            if (toTake <= 0) return 0;
 
-                int toTake = Mathf.Min(available, amount - taken);
-                if (toTake <= 0) continue;
+            // Drain smallest stacks first so they collapse fully, leaving the
+            // single leftover in the largest stack.
+            stacks.Sort((a, b) => a.m_stack.CompareTo(b.m_stack));
 
-                inventory.RemoveItem(item, toTake);
-                taken += toTake;
-
-                if (taken >= amount) break;
+            int taken = 0;
+            int remaining = toTake;
+            for (int i = 0; i < stacks.Count && remaining > 0; i++)
+            {
+                var stack = stacks[i];
+                bool isLast = (i == stacks.Count - 1);
+                int canTake = isLast ? Mathf.Max(0, stack.m_stack - 1) : stack.m_stack;
+                int take = Mathf.Min(canTake, remaining);
+                if (take <= 0) continue;
+                inventory.RemoveItem(stack, take);
+                taken += take;
+                remaining -= take;
             }
 
             if (taken > 0)
@@ -178,7 +195,8 @@ namespace MegaFactory
         }
 
         /// <summary>
-        /// Count items of a given prefab across all items in a container (respecting leave-1 rule).
+        /// Count items of a given prefab across all items in a container, applying
+        /// the type-wide leave-1 rule (sum of all stacks minus 1).
         /// </summary>
         public static int CountAvailable(Container container, string prefabName)
         {
@@ -186,17 +204,15 @@ namespace MegaFactory
             if (inventory == null) return 0;
             EnsureLoaded(container, inventory);
 
-            int count = 0;
+            int total = 0;
             foreach (var item in inventory.GetAllItems())
             {
                 if (item == null) continue;
                 string itemPrefab = item.m_dropPrefab != null ? item.m_dropPrefab.name : "";
                 if (!itemPrefab.Equals(prefabName, System.StringComparison.OrdinalIgnoreCase)) continue;
-                // Leave 1
-                int available = item.m_stack - 1;
-                if (available > 0) count += available;
+                total += item.m_stack;
             }
-            return count;
+            return Mathf.Max(0, total - 1);
         }
 
         /// <summary>
