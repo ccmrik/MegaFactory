@@ -15,7 +15,7 @@ namespace MegaFactory
     {
         public const string PluginGUID = "com.rik.megafactory";
         public const string PluginName = "Mega Factory";
-        public const string PluginVersion = "1.4.0";
+        public const string PluginVersion = "1.4.1";
 
         internal static ManualLogSource Log;
         private static Harmony _harmony;
@@ -29,6 +29,7 @@ namespace MegaFactory
         public static ConfigEntry<bool> UseReinforcedChests;
         public static ConfigEntry<bool> UseBlackMetalChests;
         public static ConfigEntry<bool> UseBarrels;
+        public static ConfigEntry<bool> ShowProductionMessage;
 
         // ── Charcoal Kiln ──
         public static ConfigEntry<bool> EnableKiln;
@@ -82,6 +83,8 @@ namespace MegaFactory
             UseReinforcedChests = Config.Bind("1. General", "UseReinforcedChests", true, "Pull from Reinforced Chests");
             UseBlackMetalChests = Config.Bind("1. General", "UseBlackMetalChests", true, "Pull from Black Metal Chests");
             UseBarrels = Config.Bind("1. General", "UseBarrels", true, "Pull from Barrels");
+            ShowProductionMessage = Config.Bind("1. General", "ShowProductionMessage", true,
+                "Pop a top-left message (with icon) when a managed station produces an item");
 
             // 2. Charcoal Kiln
             EnableKiln = Config.Bind("2. Charcoal Kiln", "Enable", true,

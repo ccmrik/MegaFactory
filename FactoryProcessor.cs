@@ -250,12 +250,15 @@ namespace MegaFactory
         /// e.g. "Sap" → "Eitr", "CopperOre" → "Copper", "Wood" → "Coal"
         /// </summary>
         public static string GetOutputForInput(Smelter smelter, string inputPrefab)
+            => GetOutputItemDrop(smelter, inputPrefab)?.gameObject.name;
+
+        public static ItemDrop GetOutputItemDrop(Smelter smelter, string inputPrefab)
         {
             if (smelter?.m_conversion == null) return null;
             foreach (var conv in smelter.m_conversion)
             {
                 if (conv.m_from != null && conv.m_from.gameObject.name.Equals(inputPrefab, System.StringComparison.OrdinalIgnoreCase))
-                    return conv.m_to?.gameObject.name;
+                    return conv.m_to;
             }
             return null;
         }
@@ -358,9 +361,27 @@ namespace MegaFactory
             // Guard against the Spawn(string) no-conversion no-op path — only credit when
             // vanilla actually could/did spawn something. GetItemConversion searches m_from
             // by name; if it matches, vanilla instantiated the m_to prefab at the output point.
-            if (FactoryProcessor.GetOutputForInput(__instance, ore) == null) return;
+            var outputDrop = FactoryProcessor.GetOutputItemDrop(__instance, ore);
+            if (outputDrop == null) return;
 
             WorkOrderManager.RecordProduction(nview, ore, stack);
+
+            // Top-left "Factory: <item> +N" notification with icon, on the owning client only.
+            // We're inside a Smelter Postfix so this fires on whichever client owns the ZNetView;
+            // gating on m_localPlayer keeps it silent during loading screens.
+            if (MegaFactoryPlugin.ShowProductionMessage.Value && Player.m_localPlayer != null)
+            {
+                var shared = outputDrop.m_itemData?.m_shared;
+                if (shared != null)
+                {
+                    Sprite icon = (shared.m_icons != null && shared.m_icons.Length > 0) ? shared.m_icons[0] : null;
+                    Player.m_localPlayer.Message(
+                        MessageHud.MessageType.TopLeft,
+                        "Factory: " + shared.m_name,
+                        stack,
+                        icon);
+                }
+            }
 
             string msg = $"{__instance.gameObject.name} produced {stack} from '{ore}' (vanilla drop at output point).";
             if (MegaFactoryPlugin.DebugMode.Value)
