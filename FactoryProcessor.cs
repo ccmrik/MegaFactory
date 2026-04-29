@@ -1,5 +1,7 @@
 using HarmonyLib;
+using System.Collections;
 using System.Collections.Generic;
+using System.Reflection.Emit;
 using UnityEngine;
 
 namespace MegaFactory
@@ -366,22 +368,11 @@ namespace MegaFactory
 
             WorkOrderManager.RecordProduction(nview, ore, stack);
 
-            // Top-left "Factory: <item> +N" notification with icon, on the owning client only.
-            // We're inside a Smelter Postfix so this fires on whichever client owns the ZNetView;
-            // gating on m_localPlayer keeps it silent during loading screens.
-            if (MegaFactoryPlugin.ShowProductionMessage.Value && Player.m_localPlayer != null)
-            {
-                var shared = outputDrop.m_itemData?.m_shared;
-                if (shared != null)
-                {
-                    Sprite icon = (shared.m_icons != null && shared.m_icons.Length > 0) ? shared.m_icons[0] : null;
-                    Player.m_localPlayer.Message(
-                        MessageHud.MessageType.TopLeft,
-                        "Factory: " + shared.m_name,
-                        stack,
-                        icon);
-                }
-            }
+            // Aggregate spawn events within a short window so a chunk-reload catch-up
+            // (potentially many Spawn(ore,1) calls in one frame for non-spawnStack stations)
+            // collapses to one "Factory: Iron +57" toast instead of 57 individual ones.
+            if (MegaFactoryPlugin.ShowProductionMessage.Value)
+                ProductionToastAggregator.Record(__instance, ore, stack);
 
             string msg = $"{__instance.gameObject.name} produced {stack} from '{ore}' (vanilla drop at output point).";
             if (MegaFactoryPlugin.DebugMode.Value)
@@ -399,6 +390,128 @@ namespace MegaFactory
             if (name.Contains("spinningwheel") || name.Contains("spinning_wheel")) return StationType.SpinningWheel;
             if (name.Contains("smelter")) return StationType.Smelter;
             return null;
+        }
+    }
+
+    // ==================== PRODUCTION TOAST AGGREGATOR ====================
+    // Collapses bursts of Smelter.Spawn calls into a single "Factory: <item> +N" toast.
+    // Critical for chunk-reload catch-up: vanilla's UpdateSmelter runs `while (accumulator >= 1f)`
+    // and may call Spawn(ore,1) dozens of times in one frame for non-spawnStack stations. Without
+    // aggregation that's a wave of identical toasts; with it, one clean line per (station,output).
+    public static class ProductionToastAggregator
+    {
+        private const float FlushDelaySeconds = 0.4f;
+
+        // Key on instanceID (int) instead of Smelter ref — Unity == hides destroyed objects but
+        // we want the aggregation key to survive a station being destroyed mid-flush.
+        private static readonly Dictionary<(int instanceId, string ore), AggregateEntry> _pending
+            = new Dictionary<(int, string), AggregateEntry>();
+        private static bool _flushScheduled;
+
+        private struct AggregateEntry
+        {
+            public Smelter Station;
+            public int TotalStack;
+        }
+
+        public static void Record(Smelter station, string ore, int stack)
+        {
+            if (station == null || string.IsNullOrEmpty(ore) || stack <= 0) return;
+
+            var key = (station.GetInstanceID(), ore);
+            if (_pending.TryGetValue(key, out var entry))
+            {
+                entry.TotalStack += stack;
+                _pending[key] = entry;
+            }
+            else
+            {
+                _pending[key] = new AggregateEntry { Station = station, TotalStack = stack };
+            }
+
+            if (!_flushScheduled && MegaFactoryPlugin.Instance != null)
+            {
+                _flushScheduled = true;
+                MegaFactoryPlugin.Instance.StartCoroutine(FlushAfterDelay());
+            }
+        }
+
+        private static IEnumerator FlushAfterDelay()
+        {
+            yield return new WaitForSeconds(FlushDelaySeconds);
+            EmitToasts();
+        }
+
+        private static void EmitToasts()
+        {
+            try
+            {
+                if (Player.m_localPlayer == null) return;
+
+                foreach (var kv in _pending)
+                {
+                    var entry = kv.Value;
+                    if (entry.Station == null) continue;
+
+                    var outputDrop = FactoryProcessor.GetOutputItemDrop(entry.Station, kv.Key.ore);
+                    if (outputDrop == null) continue;
+
+                    var shared = outputDrop.m_itemData?.m_shared;
+                    if (shared == null) continue;
+
+                    Sprite icon = (shared.m_icons != null && shared.m_icons.Length > 0) ? shared.m_icons[0] : null;
+                    Player.m_localPlayer.Message(
+                        MessageHud.MessageType.TopLeft,
+                        "Factory: " + shared.m_name,
+                        entry.TotalStack,
+                        icon);
+                }
+            }
+            finally
+            {
+                _pending.Clear();
+                _flushScheduled = false;
+            }
+        }
+    }
+
+    // ==================== ACCUMULATOR CAP TRANSPILER ====================
+    // Vanilla `Smelter.UpdateSmelter` caps the offline-catchup accumulator at 3600s (1 hour):
+    //
+    //   if (accumulator > 3600f) { accumulator = 3600f; }
+    //
+    // That's why factories silently lose long away-times. We swap both `3600f` literals for a
+    // call to GetCap(), backed by the BackgroundCatchupHours config (default 24h, max 168h).
+    // Verified against assembly_valheim 2026-04-29: only two `3600f` occurrences in the entire
+    // Smelter type, both inside UpdateSmelter, both this cap.
+    [HarmonyPatch(typeof(Smelter), "UpdateSmelter")]
+    public static class Smelter_UpdateSmelter_CapTranspiler
+    {
+        [HarmonyTranspiler]
+        public static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+        {
+            var getCap = AccessTools.Method(typeof(Smelter_UpdateSmelter_CapTranspiler), nameof(GetCap));
+            int swaps = 0;
+            foreach (var ins in instructions)
+            {
+                if (ins.opcode == OpCodes.Ldc_R4 && ins.operand is float f && Mathf.Approximately(f, 3600f))
+                {
+                    swaps++;
+                    yield return new CodeInstruction(OpCodes.Call, getCap);
+                }
+                else
+                {
+                    yield return ins;
+                }
+            }
+            if (swaps != 2)
+                MegaFactoryPlugin.Log?.LogWarning($"[CapTranspiler] expected 2 cap swaps, made {swaps} — vanilla Smelter.UpdateSmelter may have changed.");
+        }
+
+        public static float GetCap()
+        {
+            float hours = MegaFactoryPlugin.BackgroundCatchupHours?.Value ?? 24f;
+            return Mathf.Max(60f, hours * 3600f);
         }
     }
 }

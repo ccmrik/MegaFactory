@@ -15,9 +15,10 @@ namespace MegaFactory
     {
         public const string PluginGUID = "com.rik.megafactory";
         public const string PluginName = "Mega Factory";
-        public const string PluginVersion = "1.4.1";
+        public const string PluginVersion = "1.4.2";
 
         internal static ManualLogSource Log;
+        internal static MegaFactoryPlugin Instance;
         private static Harmony _harmony;
         private static ConfigFile _config;
         private static FileSystemWatcher _configWatcher;
@@ -30,6 +31,7 @@ namespace MegaFactory
         public static ConfigEntry<bool> UseBlackMetalChests;
         public static ConfigEntry<bool> UseBarrels;
         public static ConfigEntry<bool> ShowProductionMessage;
+        public static ConfigEntry<float> BackgroundCatchupHours;
 
         // ── Charcoal Kiln ──
         public static ConfigEntry<bool> EnableKiln;
@@ -70,6 +72,7 @@ namespace MegaFactory
         private void Awake()
         {
             Log = Logger;
+            Instance = this;
 
             MigrateConfig(Config.ConfigFilePath);
             Config.Reload();
@@ -85,6 +88,11 @@ namespace MegaFactory
             UseBarrels = Config.Bind("1. General", "UseBarrels", true, "Pull from Barrels");
             ShowProductionMessage = Config.Bind("1. General", "ShowProductionMessage", true,
                 "Pop a top-left message (with icon) when a managed station produces an item");
+            BackgroundCatchupHours = Config.Bind("1. General", "BackgroundCatchupHours", 24f,
+                new ConfigDescription(
+                    "Vanilla caps offline catch-up at 1 hour per station — anything beyond that is silently dropped. " +
+                    "This raises the cap (in hours) so factories actually pay out the time you spent away. Min 1h, max 168h (1 week).",
+                    new AcceptableValueRange<float>(1f, 168f)));
 
             // 2. Charcoal Kiln
             EnableKiln = Config.Bind("2. Charcoal Kiln", "Enable", true,
