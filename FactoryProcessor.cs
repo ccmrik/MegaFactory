@@ -366,18 +366,33 @@ namespace MegaFactory
             var outputDrop = FactoryProcessor.GetOutputItemDrop(__instance, ore);
             if (outputDrop == null) return;
 
-            WorkOrderManager.RecordProduction(nview, ore, stack);
+            // EVERYTHING after vanilla Spawn() runs in this Postfix MUST be wrapped — if we
+            // throw here, vanilla's QueueProcessed never reaches its post-Spawn ZDO clear
+            // (s_spawnAmount = 0 for spawn-stack stations) AND UpdateSmelter never reaches
+            // SetAccumulator. That manifests as: spawn-stack stations infinite-respawning
+            // (Lady Emz's "thousands of barley flour"), and non-spawn-stack stations losing
+            // all catch-up backlog (Milord's "no production after coming back").
+            // Pre-v1.4.4 the postfix threw a TypeLoadException on every call due to a
+            // missing System.ValueTuple dependency in the Aggregator's Dictionary key.
+            try
+            {
+                WorkOrderManager.RecordProduction(nview, ore, stack);
 
-            // Aggregate spawn events within a short window so a chunk-reload catch-up
-            // (potentially many Spawn(ore,1) calls in one frame for non-spawnStack stations)
-            // collapses to one "Factory: Iron +57" toast instead of 57 individual ones.
-            if (MegaFactoryPlugin.ShowProductionMessage.Value)
-                ProductionToastAggregator.Record(__instance, ore, stack);
+                // Aggregate spawn events within a short window so a chunk-reload catch-up
+                // (potentially many Spawn(ore,1) calls in one frame for non-spawnStack stations)
+                // collapses to one "Factory: Iron +57" toast instead of 57 individual ones.
+                if (MegaFactoryPlugin.ShowProductionMessage.Value)
+                    ProductionToastAggregator.Record(__instance, ore, stack);
 
-            string msg = $"{__instance.gameObject.name} produced {stack} from '{ore}' (vanilla drop at output point).";
-            if (MegaFactoryPlugin.DebugMode.Value)
-                MegaFactoryPlugin.Log?.LogInfo($"[MegaFactory] {msg}");
-            DiagnosticsHud.RecordEvent($"PRODUCED: {msg}");
+                string msg = $"{__instance.gameObject.name} produced {stack} from '{ore}' (vanilla drop at output point).";
+                if (MegaFactoryPlugin.DebugMode.Value)
+                    MegaFactoryPlugin.Log?.LogInfo($"[MegaFactory] {msg}");
+                DiagnosticsHud.RecordEvent($"PRODUCED: {msg}");
+            }
+            catch (System.Exception ex)
+            {
+                MegaFactoryPlugin.Log?.LogError($"[Smelter_Spawn_Patch.Postfix] swallowed exception (would break vanilla state): {ex.Message}");
+            }
         }
 
         private static StationType? ClassifyByName(string rawName)
@@ -402,23 +417,31 @@ namespace MegaFactory
     {
         private const float FlushDelaySeconds = 0.4f;
 
-        // Key on instanceID (int) instead of Smelter ref — Unity == hides destroyed objects but
-        // we want the aggregation key to survive a station being destroyed mid-flush.
-        private static readonly Dictionary<(int instanceId, string ore), AggregateEntry> _pending
-            = new Dictionary<(int, string), AggregateEntry>();
+        // We deliberately AVOID `Dictionary<(int, string), ...>` here — `(int, string)` is a
+        // System.ValueTuple<int, string>, which on .NET 4.6.2 lives in System.ValueTuple.dll
+        // (not in mscorlib until 4.7+). End users don't have that DLL, BepInEx doesn't ship
+        // it, and the type fails to load at runtime → TypeLoadException on every Postfix call.
+        // Pre-v1.4.4 that broke vanilla Smelter state in two nasty ways (see Postfix comment).
+        // String key is boring and bulletproof.
+        private static readonly Dictionary<string, AggregateEntry> _pending
+            = new Dictionary<string, AggregateEntry>();
         private static bool _flushScheduled;
 
         private struct AggregateEntry
         {
             public Smelter Station;
+            public string Ore;
             public int TotalStack;
         }
+
+        private static string MakeKey(int instanceId, string ore)
+            => instanceId.ToString() + "|" + ore;
 
         public static void Record(Smelter station, string ore, int stack)
         {
             if (station == null || string.IsNullOrEmpty(ore) || stack <= 0) return;
 
-            var key = (station.GetInstanceID(), ore);
+            string key = MakeKey(station.GetInstanceID(), ore);
             if (_pending.TryGetValue(key, out var entry))
             {
                 entry.TotalStack += stack;
@@ -426,7 +449,7 @@ namespace MegaFactory
             }
             else
             {
-                _pending[key] = new AggregateEntry { Station = station, TotalStack = stack };
+                _pending[key] = new AggregateEntry { Station = station, Ore = ore, TotalStack = stack };
             }
 
             if (!_flushScheduled && MegaFactoryPlugin.Instance != null)
@@ -453,7 +476,7 @@ namespace MegaFactory
                     var entry = kv.Value;
                     if (entry.Station == null) continue;
 
-                    var outputDrop = FactoryProcessor.GetOutputItemDrop(entry.Station, kv.Key.ore);
+                    var outputDrop = FactoryProcessor.GetOutputItemDrop(entry.Station, entry.Ore);
                     if (outputDrop == null) continue;
 
                     var shared = outputDrop.m_itemData?.m_shared;
@@ -561,43 +584,50 @@ namespace MegaFactory
         [HarmonyPostfix]
         public static void Postfix(Smelter __instance, PreState __state)
         {
-            if (!__state.Capture) return;
-            var nview = __instance.GetComponent<ZNetView>();
-            if (nview == null || !nview.IsValid()) return;
-
-            // Estimate delta the way vanilla does: now - s_startTime BEFORE this tick.
-            // GetDeltaTime overwrites s_startTime, so we read what we captured.
-            double deltaSec = 0;
             try
             {
-                if (ZNet.instance != null && __state.StartTimeTicks > 0L)
+                if (!__state.Capture) return;
+                var nview = __instance.GetComponent<ZNetView>();
+                if (nview == null || !nview.IsValid()) return;
+
+                // Estimate delta the way vanilla does: now - s_startTime BEFORE this tick.
+                // GetDeltaTime overwrites s_startTime, so we read what we captured.
+                double deltaSec = 0;
+                try
                 {
-                    var now = ZNet.instance.GetTime();
-                    var prev = new System.DateTime(__state.StartTimeTicks);
-                    deltaSec = (now - prev).TotalSeconds;
+                    if (ZNet.instance != null && __state.StartTimeTicks > 0L)
+                    {
+                        var now = ZNet.instance.GetTime();
+                        var prev = new System.DateTime(__state.StartTimeTicks);
+                        deltaSec = (now - prev).TotalSeconds;
+                    }
                 }
+                catch { }
+
+                // Only chatter on big deltas (real catch-up events) so we don't spam every second.
+                if (deltaSec < 30) return;
+
+                var zdo = nview.GetZDO();
+                int queuedAfter = zdo.GetInt(ZDOVars.s_queued, 0);
+                float fuelAfter = zdo.GetFloat(ZDOVars.s_fuel, 0f);
+                int spawnAfter = zdo.GetInt(ZDOVars.s_spawnAmount, 0);
+
+                int qDelta = __state.Queued - queuedAfter;
+                float fDelta = __state.Fuel - fuelAfter;
+                int sDelta = spawnAfter - __state.SpawnAmount;
+
+                float capUsed = Smelter_UpdateSmelter_CapTranspiler.GetCap();
+                string name = __instance.gameObject.name;
+                MegaFactoryPlugin.Log?.LogInfo(
+                    $"[Catchup] {name} delta={deltaSec / 60:0.0}min cap={capUsed / 60:0.0}min " +
+                    $"| pre: q={__state.Queued} f={__state.Fuel:0.0} buf={__state.SpawnAmount} " +
+                    $"| post: q={queuedAfter} f={fuelAfter:0.0} buf={spawnAfter} " +
+                    $"| consumed: -{qDelta}ore -{fDelta:0.0}fuel +{sDelta}buf");
             }
-            catch { }
-
-            // Only chatter on big deltas (real catch-up events) so we don't spam every second.
-            if (deltaSec < 30) return;
-
-            var zdo = nview.GetZDO();
-            int queuedAfter = zdo.GetInt(ZDOVars.s_queued, 0);
-            float fuelAfter = zdo.GetFloat(ZDOVars.s_fuel, 0f);
-            int spawnAfter = zdo.GetInt(ZDOVars.s_spawnAmount, 0);
-
-            int qDelta = __state.Queued - queuedAfter;
-            float fDelta = __state.Fuel - fuelAfter;
-            int sDelta = spawnAfter - __state.SpawnAmount;
-
-            float capUsed = Smelter_UpdateSmelter_CapTranspiler.GetCap();
-            string name = __instance.gameObject.name;
-            MegaFactoryPlugin.Log?.LogInfo(
-                $"[Catchup] {name} delta={deltaSec / 60:0.0}min cap={capUsed / 60:0.0}min " +
-                $"| pre: q={__state.Queued} f={__state.Fuel:0.0} buf={__state.SpawnAmount} " +
-                $"| post: q={queuedAfter} f={fuelAfter:0.0} buf={spawnAfter} " +
-                $"| consumed: -{qDelta}ore -{fDelta:0.0}fuel +{sDelta}buf");
+            catch (System.Exception ex)
+            {
+                MegaFactoryPlugin.Log?.LogError($"[CatchupDiag] swallowed exception: {ex.Message}");
+            }
         }
     }
 }
