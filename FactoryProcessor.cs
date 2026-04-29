@@ -504,14 +504,100 @@ namespace MegaFactory
                     yield return ins;
                 }
             }
-            if (swaps != 2)
-                MegaFactoryPlugin.Log?.LogWarning($"[CapTranspiler] expected 2 cap swaps, made {swaps} — vanilla Smelter.UpdateSmelter may have changed.");
+            // Always log the swap count (LogAlways path — not gated by DebugMode) so users
+            // and devs can confirm the cap was raised on launch without flipping any flags.
+            if (swaps == 2)
+                MegaFactoryPlugin.Log?.LogInfo($"[CapTranspiler] OK: raised Smelter offline-catchup cap from 1h to {GetCap() / 3600f:0.#}h ({swaps} IL swaps applied).");
+            else
+                MegaFactoryPlugin.Log?.LogWarning($"[CapTranspiler] FAIL: expected 2 cap swaps, made {swaps} — vanilla Smelter.UpdateSmelter may have changed. Offline catch-up will fall back to vanilla behaviour.");
         }
 
         public static float GetCap()
         {
             float hours = MegaFactoryPlugin.BackgroundCatchupHours?.Value ?? 24f;
             return Mathf.Max(60f, hours * 3600f);
+        }
+    }
+
+    // ==================== CATCH-UP DIAGNOSTIC ====================
+    // When a chunk reloads, vanilla Smelter.UpdateSmelter sees a big GetDeltaTime() and runs
+    // the production loop hard. If catch-up isn't happening, this Prefix/Postfix pair makes
+    // the symptom visible in the log: pre-state (queued/fuel/spawnAmount) + post-state +
+    // the delta. Always-on (LogAlways) when delta > 30s — that's the "interesting" path.
+    [HarmonyPatch(typeof(Smelter), "UpdateSmelter")]
+    public static class Smelter_UpdateSmelter_Diagnostic
+    {
+        public struct PreState
+        {
+            public bool Capture;
+            public int Queued;
+            public float Fuel;
+            public string SpawnOre;
+            public int SpawnAmount;
+            public long StartTimeTicks;
+            public float Accumulator;
+        }
+
+        [HarmonyPrefix]
+        [HarmonyPriority(Priority.First)]
+        public static void Prefix(Smelter __instance, out PreState __state)
+        {
+            __state = default;
+            var nview = __instance != null ? __instance.GetComponent<ZNetView>() : null;
+            if (nview == null || !nview.IsValid() || !nview.IsOwner()) return;
+            var zdo = nview.GetZDO();
+            __state = new PreState
+            {
+                Capture = true,
+                Queued = zdo.GetInt(ZDOVars.s_queued, 0),
+                Fuel = zdo.GetFloat(ZDOVars.s_fuel, 0f),
+                SpawnOre = zdo.GetString(ZDOVars.s_spawnOre, ""),
+                SpawnAmount = zdo.GetInt(ZDOVars.s_spawnAmount, 0),
+                StartTimeTicks = zdo.GetLong(ZDOVars.s_startTime, 0L),
+                Accumulator = zdo.GetFloat(ZDOVars.s_accTime, 0f),
+            };
+        }
+
+        [HarmonyPostfix]
+        public static void Postfix(Smelter __instance, PreState __state)
+        {
+            if (!__state.Capture) return;
+            var nview = __instance.GetComponent<ZNetView>();
+            if (nview == null || !nview.IsValid()) return;
+
+            // Estimate delta the way vanilla does: now - s_startTime BEFORE this tick.
+            // GetDeltaTime overwrites s_startTime, so we read what we captured.
+            double deltaSec = 0;
+            try
+            {
+                if (ZNet.instance != null && __state.StartTimeTicks > 0L)
+                {
+                    var now = ZNet.instance.GetTime();
+                    var prev = new System.DateTime(__state.StartTimeTicks);
+                    deltaSec = (now - prev).TotalSeconds;
+                }
+            }
+            catch { }
+
+            // Only chatter on big deltas (real catch-up events) so we don't spam every second.
+            if (deltaSec < 30) return;
+
+            var zdo = nview.GetZDO();
+            int queuedAfter = zdo.GetInt(ZDOVars.s_queued, 0);
+            float fuelAfter = zdo.GetFloat(ZDOVars.s_fuel, 0f);
+            int spawnAfter = zdo.GetInt(ZDOVars.s_spawnAmount, 0);
+
+            int qDelta = __state.Queued - queuedAfter;
+            float fDelta = __state.Fuel - fuelAfter;
+            int sDelta = spawnAfter - __state.SpawnAmount;
+
+            float capUsed = Smelter_UpdateSmelter_CapTranspiler.GetCap();
+            string name = __instance.gameObject.name;
+            MegaFactoryPlugin.Log?.LogInfo(
+                $"[Catchup] {name} delta={deltaSec / 60:0.0}min cap={capUsed / 60:0.0}min " +
+                $"| pre: q={__state.Queued} f={__state.Fuel:0.0} buf={__state.SpawnAmount} " +
+                $"| post: q={queuedAfter} f={fuelAfter:0.0} buf={spawnAfter} " +
+                $"| consumed: -{qDelta}ore -{fDelta:0.0}fuel +{sDelta}buf");
         }
     }
 }

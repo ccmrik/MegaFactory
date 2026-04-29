@@ -15,7 +15,7 @@ namespace MegaFactory
     {
         public const string PluginGUID = "com.rik.megafactory";
         public const string PluginName = "Mega Factory";
-        public const string PluginVersion = "1.4.2";
+        public const string PluginVersion = "1.4.3";
 
         internal static ManualLogSource Log;
         internal static MegaFactoryPlugin Instance;
